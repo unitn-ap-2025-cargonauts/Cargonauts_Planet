@@ -1,3 +1,12 @@
+//! # Cargonauts Planet AI Module
+//!
+//! This module contains the implementation of the `PlanetAI` trait for the
+//! Cargonauts planet. It defines how the planet handle messages from the
+//! Orchestrator and the Explorer.
+//!
+//! Each handler is defined as a standalone function to keep the logic modular and clean.
+
+use std::sync::Arc;
 use common_game::components::planet::*;
 use common_game::components::rocket::Rocket;
 use common_game::components::sunray::Sunray;
@@ -76,18 +85,56 @@ fn handle_internal_state_request_orch(
 }
 
 // === ExplorerToPlanet Handler ====================================================================
+/// This handler returns a `SupportedResourceResponse` message that wrap the list of basic resources
+/// that the planet can currently generate
+///
+/// # Parameters
+/// - `state`: Reference to the planet state
+/// - `explorer_id`: ID of the requesting explorer
+///
+/// # Returns
+/// `Some(PlanetToExplorer::SupportedResourceResponse)` on success.
+///
+/// # Panics
+/// This function does not panic.
+///
+/// # Logic
+/// The planet can craft basic resources, so the handler:
+/// - Get the set of available basic resource from the planet generator
+/// - Collect the set into a vec
+/// - Wrap the vector in a `SupportedResourceResponse` message and return it
 fn handle_supported_resource_request(
-    state: &mut PlanetState,
+    state: &PlanetState,
     explorer_id: u32,
 ) -> Option<PlanetToExplorer> {
-    todo!()
+    let resource_list = Some(
+        state.generator.all_available_recipes()
+            .into_iter()
+            .collect()
+    );
+    Some(PlanetToExplorer::SupportedResourceResponse { resource_list })
 }
 
+/// This handler returns a `SupportedCombinationResponse` message that wrap TODO
+///
+/// # Parameters
+/// - `state`: Reference to the planet state
+/// - `explorer_id`: ID of the requesting explorer
+///
+/// # Returns
+/// `Some(PlanetToExplorer::SupportedCombinationResponse)` on success.
+///
+/// # Panics
+/// This function does not panic. TODO
+///
+/// # Logic
+/// TODO
 fn handle_supported_combination_request(
-    state: &mut PlanetState,
+    state: &PlanetState,
     explorer_id: u32,
 ) -> Option<PlanetToExplorer> {
-    todo!()
+    let combination_list = Some(Arc::new(state.combinator)); //TODO
+    Some(PlanetToExplorer::SupportedCombinationResponse  { combination_list })
 }
 
 fn handle_generate_resource_request(
@@ -118,4 +165,60 @@ fn handle_internal_state_request(
     explorer_id: u32,
 ) -> Option<PlanetToExplorer> {
     todo!()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+    use std::sync::mpsc;
+    use common_game::components::resource::{BasicResourceType, ComplexResourceType};
+
+    // Function that create a Planet with specific arguments
+    fn create_planet(
+        id: u32,
+        planet_type: PlanetType,
+        gen_rules: Vec<BasicResourceType>,
+        comb_rules: Vec<ComplexResourceType>
+    ) -> Planet<CargonautsPlanet> {
+        let (to_orchestrator_tx, _to_orchestrator_rx) = mpsc::channel(); // Planet -> Orchestrator
+        let (_from_orchestrator_tx, from_orchestrator_rx) = mpsc::channel(); // Orchestrator -> Planet
+        let (to_explorer_tx, _to_explorer_rx) = mpsc::channel(); // Planet -> Explorer
+        let (_from_explorer_tx, from_explorer_rx) = mpsc::channel(); // Explorer -> Planet
+
+        Planet::new(
+            id,
+            planet_type,
+            CargonautsPlanet,
+            gen_rules,
+            comb_rules,
+            (from_orchestrator_rx, to_orchestrator_tx),
+            (from_explorer_rx, to_explorer_tx),
+        ).expect("Failed to create planet")
+    }
+
+    #[test]
+    fn test_base_handle_supported_resource_request() {
+        let planet_id = 0;
+        let planet_type = PlanetType::C;
+        let gen_rules = vec![BasicResourceType::Carbon];
+        let comb_rules = vec![];
+        let planet = create_planet(planet_id, planet_type, gen_rules.clone(), comb_rules);
+        let explorer_id = 1;
+
+        let result = handle_supported_resource_request(planet.state(), explorer_id);
+
+        assert!(result.is_some());
+
+        if let Some(PlanetToExplorer::SupportedResourceResponse { resource_list }) = result {
+            assert!(resource_list.is_some());
+            let resource_vec = resource_list.unwrap();
+
+            let result_set: HashSet<BasicResourceType> = resource_vec.into_iter().collect();
+            let expected_set: HashSet<BasicResourceType> = gen_rules.into_iter().collect();
+            assert_eq!(result_set, expected_set);
+        } else {
+            panic!("Expected SupportedResourceResponse variant");
+        }
+    }
 }
