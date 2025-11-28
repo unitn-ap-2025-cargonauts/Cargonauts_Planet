@@ -1,20 +1,99 @@
+use common_game::components::energy_cell::EnergyCell;
 use common_game::components::planet::*;
+use common_game::components::resource::{Combinator, Generator};
 use common_game::components::rocket::Rocket;
-use common_game::protocols::messages::{ExplorerToPlanet, OrchestratorToPlanet, PlanetToExplorer, PlanetToOrchestrator};
+use common_game::protocols::messages::{
+    ExplorerToPlanet, OrchestratorToPlanet, PlanetToExplorer, PlanetToOrchestrator,
+};
+use std::sync::Arc;
+use std::time::SystemTime;
 
-struct CargonautsPlanet;
+struct CargonautsPlanet {
+    paused_manually: bool,
+}
 
+impl CargonautsPlanet {
+    fn new() -> Self {
+        Self {
+            paused_manually: false,
+        }
+    }
+}
 
+impl PlanetAI for CargonautsPlanet {
+    fn handle_orchestrator_msg(
+        &mut self,
+        state: &mut PlanetState,
+        msg: OrchestratorToPlanet,
+    ) -> Option<PlanetToOrchestrator> {
+        match msg {
+            // Charge single cell at vector (position 0 because the planet is of Type C
+            OrchestratorToPlanet::Sunray(sunray) => {
+                let cell = state.cell_mut(0);
+                cell.charge(sunray);
 
-impl PlanetAI for CargonautsPlanet  {
-    fn handle_orchestrator_msg(&mut self, state: &mut PlanetState, msg: OrchestratorToPlanet) -> Option<PlanetToOrchestrator> {
+                Some(PlanetToOrchestrator::SunrayAck {
+                    planet_id: state.id(),
+                    timestamp: SystemTime::now(),
+                })
+            }
+
+            // Use the method to be implemented later
+            OrchestratorToPlanet::Asteroid(_) => {
+                let maybe_rocket = self.handle_asteroid(state);
+
+                Some(PlanetToOrchestrator::AsteroidAck {
+                    planet_id: state.id(),
+                    rocket: maybe_rocket,
+                })
+            }
+
+            //same here and for stop planetAi
+            OrchestratorToPlanet::StartPlanetAI(_) => {
+                self.start(state);
+
+                Some(PlanetToOrchestrator::StartPlanetAIResult {
+                    planet_id: state.id(),
+                    timestamp: SystemTime::now(),
+                })
+            }
+
+            OrchestratorToPlanet::StopPlanetAI(_) => {
+                self.stop();
+
+                Some(PlanetToOrchestrator::StopPlanetAIResult {
+                    planet_id: state.id(),
+                    timestamp: SystemTime::now(),
+                })
+            }
+
+            // NOTE: THIS IS A THEORETICAL IMPLEMENTATION BECAUSE THE DEFINITION OF MANUAL STOP OR START IS VAGUE, WILL ASK ON CLASS
+            OrchestratorToPlanet::ManualStopPlanetAI(_) => {
+                self.paused_manually = true;
+                Some(PlanetToOrchestrator::ManualStopPlanetAIResult {
+                    planet_id: state.id(),
+                    timestamp: SystemTime::now(),
+                })
+            }
+            OrchestratorToPlanet::ManualStartPlanetAI(_) => {
+                self.paused_manually = false;
+                Some(PlanetToOrchestrator::ManualStartPlanetAIResult {
+                    planet_id: state.id(),
+                    timestamp: SystemTime::now(),
+                })
+            }
+            OrchestratorToPlanet::InternalStateRequest(_) => {
+                // Attualmente impossibile a causa di campi privati e mancanza di Clone.
+                todo!(
+                    "Waiting for upstream fix: PlanetState allows no cloning nor manual construction"
+                );
+            }
+        }
+    }
+    fn handle_explorer_msg(&mut self, state: &mut PlanetState, msg: ExplorerToPlanet, ) -> Option<PlanetToExplorer> {
         todo!()
     }
-
-    fn handle_explorer_msg(&mut self, state: &mut PlanetState, msg: ExplorerToPlanet) -> Option<PlanetToExplorer> {
-        todo!()
-    }
-
+    
     fn handle_asteroid(&mut self, state: &mut PlanetState) -> Option<Rocket> {
         todo!()
     }
