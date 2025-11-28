@@ -7,7 +7,9 @@
 //! Each handler is defined as a standalone function to keep the logic modular and clean.
 
 use std::sync::Arc;
+use common_game::components::energy_cell::EnergyCell;
 use common_game::components::planet::*;
+use common_game::components::resource::{BasicResource, BasicResourceType, Carbon};
 use common_game::components::rocket::Rocket;
 use common_game::components::sunray::Sunray;
 use common_game::protocols::messages::*;
@@ -115,7 +117,8 @@ fn handle_supported_resource_request(
     Some(PlanetToExplorer::SupportedResourceResponse { resource_list })
 }
 
-/// This handler returns a `SupportedCombinationResponse` message that wrap TODO
+/// This handler returns a `SupportedCombinationResponse` message that wrap the list of complex resources
+/// that the planet can currently generate
 ///
 /// # Parameters
 /// - `state`: Reference to the planet state
@@ -125,16 +128,25 @@ fn handle_supported_resource_request(
 /// `Some(PlanetToExplorer::SupportedCombinationResponse)` on success.
 ///
 /// # Panics
-/// This function does not panic. TODO
+/// This function does not panic.
 ///
 /// # Logic
-/// TODO
+/// The planet can craft complex resources, so the handler:
+/// - Get the set of available complex resource from the planet combinator
+/// - Collect the set into a vec
+/// - Wrap the vector in a `SupportedCombinationResponse` message and return it
+///
 fn handle_supported_combination_request(
     state: &PlanetState,
     explorer_id: u32,
 ) -> Option<PlanetToExplorer> {
-    let combination_list = Some(Arc::new(state.combinator)); //TODO
-    Some(PlanetToExplorer::SupportedCombinationResponse  { combination_list })
+    let combination_list : Option<Vec<_>>= Some(
+        state.combinator.all_available_recipes()
+            .into_iter()
+            .collect()
+    );
+    //Some(PlanetToExplorer::SupportedCombinationResponse  { combination_list }) //TODO wait for messages.rs fix by JM, than test
+    Some(PlanetToExplorer::SupportedCombinationResponse  { combination_list: None }) //Delete it after fix
 }
 
 fn handle_generate_resource_request(
@@ -142,7 +154,20 @@ fn handle_generate_resource_request(
     explorer_id: u32,
     msg: GenerateResourceRequest,
 ) -> Option<PlanetToExplorer> {
-    todo!()
+    let mut resource: Option<BasicResource> = None;
+    let energy_cell = state.cell_mut(0);
+    if energy_cell.is_charged(){
+        match msg.resource() { //TODO need a getter in the common or move the field resource directly in the msg and not pass it in side a struct
+            BasicResourceType::Carbon => {
+                match state.generator.make_carbon(energy_cell){
+                    Ok( r) => resource = Some(common_game::components::resource::BasicResource::Carbon(r)),
+                    Err(e) => panic!("{}", e)
+                }
+            },
+            _ => panic!("Unexpected resource type")
+        }
+    }
+    Some(PlanetToExplorer::GenerateResourceResponse { resource })
 }
 
 fn handle_combine_resource_request(
@@ -167,11 +192,14 @@ fn handle_internal_state_request(
     todo!()
 }
 
+// === Utilities Functions ================================================================
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashSet;
     use std::sync::mpsc;
+    use std::collections::HashSet;
     use common_game::components::resource::{BasicResourceType, ComplexResourceType};
 
     // Function that create a Planet with specific arguments
@@ -221,4 +249,29 @@ mod tests {
             panic!("Expected SupportedResourceResponse variant");
         }
     }
+
+    /*#[test]
+    fn test_base_handle_supported_combination_request() {
+        let planet_id = 0;
+        let planet_type = PlanetType::C;
+        let gen_rules = vec![BasicResourceType::Carbon];
+        let comb_rules = vec![ComplexResourceType::Diamond, ComplexResourceType::Life];
+        let planet = create_planet(planet_id, planet_type, gen_rules, comb_rules.clone());
+        let explorer_id = 1;
+
+        let result = handle_supported_combination_request(planet.state(), explorer_id);
+
+        assert!(result.is_some());
+
+        if let Some(PlanetToExplorer::SupportedCombinationResponse { combination_list }) = result {
+            assert!(combination_list.is_some());
+            let resource_vec = combination_list.unwrap();
+
+            let result_set: HashSet<ComplexResourceType> = resource_vec.into_iter().collect(); //TODO wait for messages.rs fix by JM, than test
+            let expected_set: HashSet<ComplexResourceType> = comb_rules.into_iter().collect();
+            assert_eq!(result_set, expected_set);
+        } else {
+            panic!("Expected SupportedCombinationResponse variant");
+        }
+    }*/
 }
