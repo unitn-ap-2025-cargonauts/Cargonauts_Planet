@@ -6,13 +6,12 @@
 //!
 //! Each handler is defined as a standalone function to keep the logic modular and clean.
 
-use std::sync::Arc;
-use common_game::components::energy_cell::EnergyCell;
 use common_game::components::planet::*;
-use common_game::components::resource::{BasicResource, BasicResourceType, Carbon};
+use common_game::components::resource::{BasicResourceType, ComplexResourceRequest};
 use common_game::components::rocket::Rocket;
 use common_game::components::sunray::Sunray;
 use common_game::protocols::messages::*;
+use log::info;
 
 struct CargonautsPlanet;
 
@@ -20,6 +19,7 @@ impl PlanetAI for CargonautsPlanet  {
     fn handle_orchestrator_msg(&mut self, state: &mut PlanetState, msg: OrchestratorToPlanet) -> Option<PlanetToOrchestrator> {
         match msg {
             OrchestratorToPlanet::Sunray(ray) => {
+                info!("Sunray received from orchestrator");
                 handle_sunray(state, ray)
             },
             OrchestratorToPlanet::Asteroid(_) => None, //Handled in start method
@@ -28,6 +28,7 @@ impl PlanetAI for CargonautsPlanet  {
             //OrchestratorToPlanet::ManualStopPlanetAI(_) => {}
             //OrchestratorToPlanet::ManualStartPlanetAI(_) => {}
             OrchestratorToPlanet::InternalStateRequest(msg) => {
+                info!("InternalStateRequest received from orchestrator");
                 handle_internal_state_request_orch(state, msg)
             }
             _ => None //TODO Remove after is defined where to manage StartPlanetAI, ManualStopPlanetAI, ManualStartPlanetAI
@@ -37,21 +38,27 @@ impl PlanetAI for CargonautsPlanet  {
     fn handle_explorer_msg(&mut self, state: &mut PlanetState, msg: ExplorerToPlanet) -> Option<PlanetToExplorer> {
         match msg {
             ExplorerToPlanet::SupportedResourceRequest { explorer_id } => {
-                handle_supported_resource_request(state, explorer_id)
+                info!("SupportedResourceRequest received from explorer[{}]", explorer_id);
+                handle_supported_resource_request(state)
             },
             ExplorerToPlanet::SupportedCombinationRequest { explorer_id } => {
-                handle_supported_combination_request(state, explorer_id)
+                info!("SupportedCombinationRequest received from explorer[{}]", explorer_id);
+                handle_supported_combination_request(state)
             },
-            ExplorerToPlanet::GenerateResourceRequest { explorer_id, msg } => {
-                handle_generate_resource_request(state, explorer_id, msg)
+            ExplorerToPlanet::GenerateResourceRequest { explorer_id, resource } => {
+                info!("GenerateResourceRequest received from explorer[{}]. Ask for generate {:?}", explorer_id, resource);
+                handle_generate_resource_request(state, explorer_id, resource)
             },
             ExplorerToPlanet::CombineResourceRequest { explorer_id, msg } => {
+                info!("CombineResourceRequest received from explorer[{}]. Ask for craft {:?}", explorer_id, msg);
                 handle_combine_resource_request(state, explorer_id, msg)
             },
             ExplorerToPlanet::AvailableEnergyCellRequest { explorer_id } => {
-                handle_energy_cell_request(state, explorer_id)
+                info!("AvailableEnergyCellRequest received from explorer[{}]", explorer_id);
+                handle_energy_cell_request(state)
             },
             ExplorerToPlanet::InternalStateRequest { explorer_id } => {
+                info!("InternalStateRequest received from explorer[{}]", explorer_id);
                 handle_internal_state_request(state, explorer_id)
             }
         }
@@ -92,10 +99,9 @@ fn handle_internal_state_request_orch(
 ///
 /// # Parameters
 /// - `state`: Reference to the planet state
-/// - `explorer_id`: ID of the requesting explorer
 ///
 /// # Returns
-/// `Some(PlanetToExplorer::SupportedResourceResponse)` on success.
+/// `Some(PlanetToExplorer::SupportedResourceResponse)`
 ///
 /// # Panics
 /// This function does not panic.
@@ -103,17 +109,11 @@ fn handle_internal_state_request_orch(
 /// # Logic
 /// The planet can craft basic resources, so the handler:
 /// - Get the set of available basic resource from the planet generator
-/// - Collect the set into a vec
-/// - Wrap the vector in a `SupportedResourceResponse` message and return it
+/// - Wrap the set in a `SupportedResourceResponse` message and return it
 fn handle_supported_resource_request(
     state: &PlanetState,
-    explorer_id: u32,
 ) -> Option<PlanetToExplorer> {
-    let resource_list = Some(
-        state.generator.all_available_recipes()
-            .into_iter()
-            .collect()
-    );
+    let resource_list = Some(state.generator.all_available_recipes());
     Some(PlanetToExplorer::SupportedResourceResponse { resource_list })
 }
 
@@ -122,10 +122,9 @@ fn handle_supported_resource_request(
 ///
 /// # Parameters
 /// - `state`: Reference to the planet state
-/// - `explorer_id`: ID of the requesting explorer
 ///
 /// # Returns
-/// `Some(PlanetToExplorer::SupportedCombinationResponse)` on success.
+/// `Some(PlanetToExplorer::SupportedCombinationResponse)`
 ///
 /// # Panics
 /// This function does not panic.
@@ -133,62 +132,82 @@ fn handle_supported_resource_request(
 /// # Logic
 /// The planet can craft complex resources, so the handler:
 /// - Get the set of available complex resource from the planet combinator
-/// - Collect the set into a vec
-/// - Wrap the vector in a `SupportedCombinationResponse` message and return it
-///
+/// - Wrap the set in a `SupportedCombinationResponse` message and return it
 fn handle_supported_combination_request(
     state: &PlanetState,
-    explorer_id: u32,
 ) -> Option<PlanetToExplorer> {
-    let combination_list : Option<Vec<_>>= Some(
-        state.combinator.all_available_recipes()
-            .into_iter()
-            .collect()
-    );
-    //Some(PlanetToExplorer::SupportedCombinationResponse  { combination_list }) //TODO wait for messages.rs fix by JM, than test
-    Some(PlanetToExplorer::SupportedCombinationResponse  { combination_list: None }) //Delete it after fix
+    let combination_list = Some(state.combinator.all_available_recipes());
+    Some(PlanetToExplorer::SupportedCombinationResponse  { combination_list })
 }
 
+///TODO fn handle_generate_resource_request description
 fn handle_generate_resource_request(
     state: &mut PlanetState,
     explorer_id: u32,
-    msg: GenerateResourceRequest,
+    req_resource: BasicResourceType,
 ) -> Option<PlanetToExplorer> {
-    let mut resource: Option<BasicResource> = None;
+    /*let mut resource: Option<BasicResource> = None;
     let energy_cell = state.cell_mut(0);
     if energy_cell.is_charged(){
-        match msg.resource() { //TODO need a getter in the common or move the field resource directly in the msg and not pass it in side a struct
+        match req_resource {
             BasicResourceType::Carbon => {
-                match state.generator.make_carbon(energy_cell){
-                    Ok( r) => resource = Some(common_game::components::resource::BasicResource::Carbon(r)),
-                    Err(e) => panic!("{}", e)
+                match state.generator.make_carbon(energy_cell){ //TODO
+                    Ok( r) => resource = Some(BasicResource::Carbon(r)),
+                    Err(e) => panic!("{}", e) //TODO propagate the error?
                 }
             },
-            _ => panic!("Unexpected resource type")
+            _ => panic!("Unexpected resource type") //TODO use Err()?
         }
     }
-    Some(PlanetToExplorer::GenerateResourceResponse { resource })
+    Some(PlanetToExplorer::GenerateResourceResponse { resource })*/
+    todo!()
 }
 
+///TODO fn handle_combine_resource_request description
 fn handle_combine_resource_request(
     state: &mut PlanetState,
     explorer_id: u32,
-    msg: CombineResourceRequest,
+    msg: ComplexResourceRequest,
 ) -> Option<PlanetToExplorer> {
     todo!()
 }
 
+/// This handler returns an `AvailableEnergyCellResponse` message containing
+/// the number of currently charged energy cells available on the planet.
+/// Since the planet has only one energy cell, the value can only be 0 or 1.
+///
+/// # Parameters
+/// - `state`: Reference to the planet state
+///
+/// # Returns
+/// `Some(PlanetToExplorer::AvailableEnergyCellResponse)` with `available_cells` set to:
+/// - **0**: if the energy cell is discharged
+/// - **1**: if the energy cell is charged
+///
+/// # Panics
+/// This function does not panic.
+///
+/// # Logic
+/// The handler:
+/// - Initializes a counter to 0
+/// - Accesses the energy cell and increments the counter if it is charged
+/// - Wraps the counter inside an `AvailableEnergyCellResponse` message and returns it
 fn handle_energy_cell_request(
-    state: &mut PlanetState,
-    explorer_id: u32,
+    state: &PlanetState,
 ) -> Option<PlanetToExplorer> {
-    todo!()
+    let mut available_cells = 0;
+    if state.cell(0).is_charged() {
+        available_cells += 1;
+    }
+    Some(PlanetToExplorer::AvailableEnergyCellResponse { available_cells })
 }
 
+///TODO fn handle_internal_state_request description
 fn handle_internal_state_request(
-    state: &mut PlanetState,
+    state: &PlanetState,
     explorer_id: u32,
 ) -> Option<PlanetToExplorer> {
+    /*Some(PlanetToExplorer::InternalStateResponse { planet_state: state })*/ //TODO find out the utility of this msg and ask if is need to pass the only ref and not the whole ownership
     todo!()
 }
 
@@ -232,9 +251,8 @@ mod tests {
         let gen_rules = vec![BasicResourceType::Carbon];
         let comb_rules = vec![];
         let planet = create_planet(planet_id, planet_type, gen_rules.clone(), comb_rules);
-        let explorer_id = 1;
 
-        let result = handle_supported_resource_request(planet.state(), explorer_id);
+        let result = handle_supported_resource_request(planet.state());
 
         assert!(result.is_some());
 
@@ -250,16 +268,15 @@ mod tests {
         }
     }
 
-    /*#[test]
+    #[test]
     fn test_base_handle_supported_combination_request() {
         let planet_id = 0;
         let planet_type = PlanetType::C;
         let gen_rules = vec![BasicResourceType::Carbon];
         let comb_rules = vec![ComplexResourceType::Diamond, ComplexResourceType::Life];
         let planet = create_planet(planet_id, planet_type, gen_rules, comb_rules.clone());
-        let explorer_id = 1;
 
-        let result = handle_supported_combination_request(planet.state(), explorer_id);
+        let result = handle_supported_combination_request(planet.state());
 
         assert!(result.is_some());
 
@@ -273,5 +290,15 @@ mod tests {
         } else {
             panic!("Expected SupportedCombinationResponse variant");
         }
-    }*/
+    }
+
+    #[test]
+    fn test_base_handle_energy_cell_request_charge() {
+        todo!()
+    }
+
+    #[test]
+    fn test_base_handle_energy_cell_request_discharge() {
+        todo!()
+    }
 }
