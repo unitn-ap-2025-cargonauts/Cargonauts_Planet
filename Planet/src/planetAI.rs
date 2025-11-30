@@ -11,7 +11,7 @@ use common_game::components::resource::{BasicResourceType, ComplexResourceReques
 use common_game::components::rocket::Rocket;
 use common_game::components::sunray::Sunray;
 use common_game::protocols::messages::*;
-use log::info;
+//use log::info; //TODO log?
 
 struct CargonautsPlanet;
 
@@ -19,7 +19,7 @@ impl PlanetAI for CargonautsPlanet  {
     fn handle_orchestrator_msg(&mut self, state: &mut PlanetState, msg: OrchestratorToPlanet) -> Option<PlanetToOrchestrator> {
         match msg {
             OrchestratorToPlanet::Sunray(ray) => {
-                info!("Sunray received from orchestrator");
+                //info!("Sunray received from orchestrator");
                 handle_sunray(state, ray)
             },
             OrchestratorToPlanet::Asteroid(_) => None, //Handled in start method
@@ -28,7 +28,7 @@ impl PlanetAI for CargonautsPlanet  {
             //OrchestratorToPlanet::ManualStopPlanetAI(_) => {}
             //OrchestratorToPlanet::ManualStartPlanetAI(_) => {}
             OrchestratorToPlanet::InternalStateRequest(msg) => {
-                info!("InternalStateRequest received from orchestrator");
+                //info!("InternalStateRequest received from orchestrator");
                 handle_internal_state_request_orch(state, msg)
             }
             _ => None //TODO Remove after is defined where to manage StartPlanetAI, ManualStopPlanetAI, ManualStartPlanetAI
@@ -38,27 +38,27 @@ impl PlanetAI for CargonautsPlanet  {
     fn handle_explorer_msg(&mut self, state: &mut PlanetState, msg: ExplorerToPlanet) -> Option<PlanetToExplorer> {
         match msg {
             ExplorerToPlanet::SupportedResourceRequest { explorer_id } => {
-                info!("SupportedResourceRequest received from explorer[{}]", explorer_id);
+                //info!("SupportedResourceRequest received from explorer[{}]", explorer_id);
                 handle_supported_resource_request(state)
             },
             ExplorerToPlanet::SupportedCombinationRequest { explorer_id } => {
-                info!("SupportedCombinationRequest received from explorer[{}]", explorer_id);
+                //info!("SupportedCombinationRequest received from explorer[{}]", explorer_id);
                 handle_supported_combination_request(state)
             },
             ExplorerToPlanet::GenerateResourceRequest { explorer_id, resource } => {
-                info!("GenerateResourceRequest received from explorer[{}]. Ask for generate {:?}", explorer_id, resource);
+                //info!("GenerateResourceRequest received from explorer[{}]. Ask for generate {:?}", explorer_id, resource);
                 handle_generate_resource_request(state, explorer_id, resource)
             },
             ExplorerToPlanet::CombineResourceRequest { explorer_id, msg } => {
-                info!("CombineResourceRequest received from explorer[{}]. Ask for craft {:?}", explorer_id, msg);
+                //info!("CombineResourceRequest received from explorer[{}]. Ask for craft {:?}", explorer_id, msg);
                 handle_combine_resource_request(state, explorer_id, msg)
             },
             ExplorerToPlanet::AvailableEnergyCellRequest { explorer_id } => {
-                info!("AvailableEnergyCellRequest received from explorer[{}]", explorer_id);
+                //info!("AvailableEnergyCellRequest received from explorer[{}]", explorer_id);
                 handle_energy_cell_request(state)
             },
             ExplorerToPlanet::InternalStateRequest { explorer_id } => {
-                info!("InternalStateRequest received from explorer[{}]", explorer_id);
+                //info!("InternalStateRequest received from explorer[{}]", explorer_id);
                 handle_internal_state_request(state, explorer_id)
             }
         }
@@ -292,7 +292,7 @@ mod tests {
         }
     }
 
-    #[test]
+    /*#[test]
     fn test_base_handle_energy_cell_request_charge() {
         todo!()
     }
@@ -300,5 +300,5 @@ mod tests {
     #[test]
     fn test_base_handle_energy_cell_request_discharge() {
         todo!()
-    }
+    }*/
 }
