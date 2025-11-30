@@ -87,7 +87,6 @@ fn handle_sunray(
     state: &mut PlanetState,
     ray: Sunray,
 ) -> Option<PlanetToOrchestrator> {
-    todo!()
 }
 
 fn handle_internal_state_request_orch(
