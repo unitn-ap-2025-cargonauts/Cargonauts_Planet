@@ -3,6 +3,8 @@ use common_game::components::resource::ComplexResourceRequest;
 use common_game::components::rocket::Rocket;
 use common_game::components::sunray::Sunray;
 use common_game::protocols::messages::*;
+use common_game::components::resource::{Combinator, Generator};
+
 
 
 struct CargonautsPlanet {
@@ -18,7 +20,12 @@ impl Default for CargonautsPlanet {
 }
 
 impl PlanetAI for CargonautsPlanet  {
-    fn handle_orchestrator_msg(&mut self, state: &mut PlanetState, msg: OrchestratorToPlanet) -> Option<PlanetToOrchestrator> {
+    fn handle_orchestrator_msg(
+        &mut self, state: &mut PlanetState,
+        generator: &Generator,
+        combinator: &Combinator,
+        msg: OrchestratorToPlanet
+    ) -> Option<PlanetToOrchestrator> {
         match msg {
             OrchestratorToPlanet::Sunray(ray) => {
                 handle_sunray(state, ray)
@@ -35,7 +42,13 @@ impl PlanetAI for CargonautsPlanet  {
         }
     }
 
-    fn handle_explorer_msg(&mut self, state: &mut PlanetState, msg: ExplorerToPlanet) -> Option<PlanetToExplorer> {
+    fn handle_explorer_msg(
+        &mut self,
+        state: &mut PlanetState,
+        generator: &Generator,
+        combinator: &Combinator,
+        msg: ExplorerToPlanet,
+    ) -> Option<PlanetToExplorer> {
         match msg {
             ExplorerToPlanet::SupportedResourceRequest { explorer_id } => {
                 handle_supported_resource_request(state, explorer_id)
@@ -56,7 +69,12 @@ impl PlanetAI for CargonautsPlanet  {
         }
     }
 
-    fn handle_asteroid(&mut self, state: &mut PlanetState) -> Option<Rocket> {
+    fn handle_asteroid(
+        &mut self,
+        state: &mut PlanetState,
+        generator: &Generator,
+        combinator: &Combinator
+    ) -> Option<Rocket> {
 
         if !self.ai_is_active {
             return None;
@@ -76,7 +94,7 @@ impl PlanetAI for CargonautsPlanet  {
         self.ai_is_active = true;
     }
 
-    fn stop(&mut self) {
+    fn stop(&mut self, state: &PlanetState) {
         todo!()
     }
 }
@@ -87,6 +105,7 @@ fn handle_sunray(
     state: &mut PlanetState,
     ray: Sunray,
 ) -> Option<PlanetToOrchestrator> {
+    todo!()
 }
 
 fn handle_internal_state_request_orch(
@@ -180,7 +199,7 @@ mod test {
         let mut unwrapped_planet = planet.unwrap();
 
         let thread_plane = thread::spawn(move|| {
-            unwrapped_planet.start();
+            unwrapped_planet.run();
         });
 
 
@@ -211,7 +230,7 @@ mod test {
         assert!(planet.is_ok(), "Error on creating the planet");
         let mut unwrapped_planet = planet.unwrap();
         let thread_plane = thread::spawn(move|| {
-            unwrapped_planet.start();
+            unwrapped_planet.run();
         });
     }
 }
