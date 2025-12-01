@@ -7,7 +7,7 @@
 //! Each handler is defined as a standalone function to keep the logic modular and clean.
 
 use common_game::components::planet::*;
-use common_game::components::resource::{BasicResource, BasicResourceType, Combinator, ComplexResourceRequest, Generator};
+use common_game::components::resource::{BasicResource, BasicResourceType, Combinator, ComplexResource, ComplexResourceRequest, Generator};
 use common_game::components::rocket::Rocket;
 use common_game::components::sunray::Sunray;
 use common_game::protocols::messages::*;
@@ -142,7 +142,31 @@ fn handle_supported_combination_request(
     Some(PlanetToExplorer::SupportedCombinationResponse  { combination_list })
 }
 
-///TODO fn handle_generate_resource_request description
+/// This handler processes a request to generate a basic resource using the planet's generator, 
+/// if energy is available.
+/// It returns a `GenerateResourceResponse` message containing the generated resource.
+///
+/// # Parameters
+/// - `state`: Mutable reference to the planet state.
+/// - `generator`: Reference to the planet's generator.
+/// - `req_resource`: The type of basic resource the explorer is requesting to generate.
+///
+/// # Returns
+/// `Some(PlanetToExplorer::GenerateResourceResponse)` containing:
+/// - `Some(BasicResource::Carbon)` on successful generation.
+/// - `None` if the planet has no charged energy cell.
+///
+/// # Panics
+/// - If the requested resource type is not supported by the generator.
+/// - If the generator reports an unexpected error while crafting.
+///
+/// # Logic
+/// - Retrieve the energy cell and check if it is charged
+/// - If charged:
+///     - Attempt to generate the requested basic resource via the generator
+///     - Wrap the generated resource in a `GenerateResourceResponse` message and return it.
+/// - Else:
+///     - Wrap a `None` in a `GenerateResourceResponse` message and return it.
 fn handle_generate_resource_request(
     state: &mut PlanetState,
     generator: &Generator,
@@ -155,22 +179,67 @@ fn handle_generate_resource_request(
             BasicResourceType::Carbon => {
                 match generator.make_carbon(energy_cell){
                     Ok( r) => resource = Some(BasicResource::Carbon(r)),
-                    Err(e) => panic!("{}", e) //TODO propagate the error?
+                    Err(e) => panic!("{:?}", e) //TODO right?
                 }
             },
-            _ => panic!("Unexpected resource type") //TODO use Err()?
+            _ => panic!("Unexpected resource type") //TODO right?
         }
     }
     Some(PlanetToExplorer::GenerateResourceResponse { resource })
 }
 
-///TODO fn handle_combine_resource_request description
+/// This handler processes a request to combine two basic or complex resources
+/// into a new complex resource using the planet's combinator, if energy is available.
+/// It returns a `CombineResourceResponse` message containing the newly
+/// crafted complex resource.
+///
+/// # Parameters
+/// - `state`: Mutable reference to the planet state.
+/// - `combinator`: Reference to the planet's combinator.
+/// - `msg`: A `ComplexResourceRequest` specifying which complex resource the
+///   explorer want to craft, with the ingredients required.
+///
+/// # Returns
+/// `Some(PlanetToExplorer::CombineResourceResponse)` containing:
+/// - `Some(ComplexResource::X)` if the combination succeeds.
+/// - `None` if the planet has no charged energy cell.
+///
+/// # Panics
+/// - If the requested complex resource type is not supported by the combinator.
+/// - If the combinator reports an unexpected error while crafting.
+///
+/// # Logic
+/// - Retrieve the energy cell and check if it is charged.
+/// - If charged:
+///     - Attempt to combine the provided ingredients using the combinator.
+///     - Wrap the produced resource in a `CombineResourceResponse` message and return it.
+/// - Else:
+///     - Wrap a `None` in a `CombineResourceResponse` message and return it.
 fn handle_combine_resource_request(
     state: &mut PlanetState,
     combinator: &Combinator,
     msg: ComplexResourceRequest,
 ) -> Option<PlanetToExplorer> {
-    todo!()
+    let mut complex_response: Option<ComplexResource> = None;
+    let energy_cell = state.cell_mut(0);
+    if energy_cell.is_charged(){
+        match msg {
+            ComplexResourceRequest::Diamond(carbon1, carbon2) => {
+                match combinator.make_diamond(carbon1, carbon2, energy_cell){
+                    Ok( r) => complex_response = Some(ComplexResource::Diamond(r)),
+                    Err(e) => panic!("{:?}", e) //TODO right?
+                }
+            },
+            ComplexResourceRequest::Life(water, carbon) => {
+                match combinator.make_life(water, carbon, energy_cell){
+                    Ok( r) => complex_response = Some(ComplexResource::Life(r)),
+                    Err(e) => panic!("{:?}", e) //TODO right?
+                }
+            },
+            _ => panic!("Unexpected resource type") //TODO right?
+        }
+    }
+    Some(PlanetToExplorer::CombineResourceResponse { complex_response })
 }
 
 /// This handler returns an `AvailableEnergyCellResponse` message containing
@@ -245,7 +314,7 @@ mod tests {
         ).expect("Failed to create planet")
     }
 
-    /*#[test]
+    #[test]
     fn test_base_handle_supported_resource_request() {
         let planet_id = 0;
         let planet_type = PlanetType::C;
@@ -291,7 +360,7 @@ mod tests {
         } else {
             panic!("Expected SupportedCombinationResponse variant");
         }
-    }*/
+    }
 
     /*#[test]
     fn test_base_handle_energy_cell_request_charge() {
