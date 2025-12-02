@@ -16,6 +16,8 @@ impl PlanetAI for CargonautsPlanet {
     fn handle_orchestrator_msg(
         &mut self,
         state: &mut PlanetState,
+        generator: &Generator,
+        combinator: &Combinator,
         msg: OrchestratorToPlanet,
     ) -> Option<PlanetToOrchestrator> {
         match msg {
