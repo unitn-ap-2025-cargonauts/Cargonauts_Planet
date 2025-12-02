@@ -1,3 +1,4 @@
+use std::os::linux::raw::stat;
 use common_game::components::planet::*;
 use common_game::components::resource::ComplexResourceRequest;
 use common_game::components::rocket::Rocket;
@@ -69,25 +70,48 @@ impl PlanetAI for CargonautsPlanet  {
         }
     }
 
+
+    /// Handler for the [Asteroid] message, it returns `None` or `Some([Rocket])` based on the rules of the
+    /// [Planet] or the availability of [Rocket] on the planet. 
+    ///
+    /// More precisely, it returns `None` if:
+    /// - The [Planet] can not create any [Rocket] because of its rules.
+    /// - The [Planet] can not crate any [Rocket] because it has no charged [EnergyCell].
+    ///
+    /// It returns `Some(Rocket)` if:
+    /// - The [Planet]'s rules allow it to do so and it already has a [Rocket] that can be used.
+    /// - The [Planet]'s rules allow it to do so and it was able to build a [Rocket] when [Asteroid]
+    /// message was delivered to it.
     fn handle_asteroid(
         &mut self,
         state: &mut PlanetState,
-        generator: &Generator,
-        combinator: &Combinator
+        _: &Generator,
+        _: &Combinator
     ) -> Option<Rocket> {
 
-        if !self.ai_is_active {
+        if !self.ai_is_active || !state.can_have_rocket(){
             return None;
         }
 
-        if let Some(rocket) = state.take_rocket() {
-            println!("An asteroid ☄️ is coming... Luckly we have a rocket ready to be launched 🚀!");
-            Some( rocket )
+        // At this point the Rocket can be built. Check if there already
+        // is a rocket ready to be used
+        if state.has_rocket() {
+            let rocket = state.take_rocket().unwrap();
+            Some(rocket)
         } else {
-            println!("An asteroid ☄️ is coming... Unluckly we do not have any rocker to launch!");
+            // The rocket is not available, check if it still can be created with the use of an
+            // EnergyCell.
+            let charged_cell_position = state.cells_iter().position( |cell_ref| cell_ref.is_charged() );
+            if let Some(charged_cell_position_result) = charged_cell_position {
+                // Create the rocket and return it
+                let created_rocket_result = state.build_rocket( charged_cell_position_result );
+                if let Ok(non_err_msg) = created_rocket_result {
+                    return state.take_rocket();
+                }
+            }
+            // Rocket can not be built
             None
         }
-
     }
 
     fn start(&mut self, state: &PlanetState) {
