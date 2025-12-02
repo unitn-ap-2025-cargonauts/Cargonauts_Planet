@@ -1,28 +1,71 @@
+use common_game::components::energy_cell::EnergyCell;
 use common_game::components::planet::*;
+use common_game::components::resource::{Combinator, Generator};
 use common_game::components::rocket::Rocket;
 use common_game::components::sunray::Sunray;
 use common_game::protocols::messages::*;
+use common_game::protocols::messages::{
+    ExplorerToPlanet, OrchestratorToPlanet, PlanetToExplorer, PlanetToOrchestrator,
+};
+use std::sync::Arc;
+use std::time::SystemTime;
 
 struct CargonautsPlanet;
 
-impl PlanetAI for CargonautsPlanet  {
-    fn handle_orchestrator_msg(&mut self, state: &mut PlanetState, msg: OrchestratorToPlanet) -> Option<PlanetToOrchestrator> {
+impl PlanetAI for CargonautsPlanet {
+    fn handle_orchestrator_msg(
+        &mut self,
+        state: &mut PlanetState,
+        msg: OrchestratorToPlanet,
+    ) -> Option<PlanetToOrchestrator> {
         match msg {
-            OrchestratorToPlanet::Sunray(ray) => {
-                handle_sunray(state, ray)
-            },
-            OrchestratorToPlanet::Asteroid(_) => None, //Handled in start method
-            //OrchestratorToPlanet::StartPlanetAI(_) => {}
-            OrchestratorToPlanet::StopPlanetAI(_) => None, //Handled in start method
-            //OrchestratorToPlanet::ManualStopPlanetAI(_) => {}
-            //OrchestratorToPlanet::ManualStartPlanetAI(_) => {}
-            OrchestratorToPlanet::InternalStateRequest(msg) => {
-                handle_internal_state_request_orch(state, msg)
+            // Charge single cell at vector (position 0 because the planet is of Type C
+            OrchestratorToPlanet::Sunray(sunray) => {
+                let cell = state.cell_mut(0);
+                cell.charge(sunray);
+
+                Some(PlanetToOrchestrator::SunrayAck {
+                    planet_id: state.id(),
+                    timestamp: SystemTime::now(),
+                })
             }
-            _ => None //TODO Remove after is defined where to manage StartPlanetAI, ManualStopPlanetAI, ManualStartPlanetAI
+
+            // Use the method to be implemented later
+            OrchestratorToPlanet::Asteroid(_) => {
+                let maybe_rocket = self.handle_asteroid(state);
+
+                Some(PlanetToOrchestrator::AsteroidAck {
+                    planet_id: state.id(),
+                    rocket: maybe_rocket,
+                })
+            }
+
+            //same here and for stop planetAi
+            OrchestratorToPlanet::StartPlanetAI(_) => {
+                self.start(state);
+
+                Some(PlanetToOrchestrator::StartPlanetAIResult {
+                    planet_id: state.id(),
+                    timestamp: SystemTime::now(),
+                })
+            }
+
+            OrchestratorToPlanet::StopPlanetAI(_) => {
+                self.stop();
+
+                Some(PlanetToOrchestrator::StopPlanetAIResult {
+                    planet_id: state.id(),
+                    timestamp: SystemTime::now(),
+                })
+            }
+
+            OrchestratorToPlanet::InternalStateRequest(_) => {
+                todo!(
+                    "Waiting for upstream fix: PlanetState allows no cloning nor manual construction"
+                );
+            }
         }
     }
-
     fn handle_explorer_msg(&mut self, state: &mut PlanetState, msg: ExplorerToPlanet) -> Option<PlanetToExplorer> {
         match msg {
             ExplorerToPlanet::SupportedResourceRequest { explorer_id } => {
@@ -61,19 +104,6 @@ impl PlanetAI for CargonautsPlanet  {
 
 // === OrchestratorToPlanet Handler ================================================================
 
-fn handle_sunray(
-    state: &mut PlanetState,
-    ray: Sunray,
-) -> Option<PlanetToOrchestrator> {
-    todo!()
-}
-
-fn handle_internal_state_request_orch(
-    state: &mut PlanetState,
-    msg: InternalStateRequestMsg,
-) -> Option<PlanetToOrchestrator> {
-    todo!()
-}
 
 // === ExplorerToPlanet Handler ====================================================================
 fn handle_supported_resource_request(
