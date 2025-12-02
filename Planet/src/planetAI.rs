@@ -8,8 +8,7 @@
 
 use common_game::components::energy_cell::EnergyCell;
 use common_game::components::planet::*;
-use common_game::components::resource::{Combinator, Generator};
-use common_game::components::resource::{BasicResource, BasicResourceType, Combinator, ComplexResource, ComplexResourceRequest, Generator};
+use common_game::components::resource::*;
 use common_game::components::rocket::Rocket;
 use common_game::components::sunray::Sunray;
 use common_game::protocols::messages::*;
