@@ -1,4 +1,5 @@
 use std::os::linux::raw::stat;
+use std::time::SystemTime;
 use common_game::components::planet::*;
 use common_game::components::resource::ComplexResourceRequest;
 use common_game::components::rocket::Rocket;
@@ -28,10 +29,19 @@ impl PlanetAI for CargonautsPlanet  {
         msg: OrchestratorToPlanet
     ) -> Option<PlanetToOrchestrator> {
         match msg {
-            OrchestratorToPlanet::Sunray(ray) => {
-                handle_sunray(state, ray)
+            OrchestratorToPlanet::Sunray(sunray) => {
+                let cell = state.cell_mut(0);
+                cell.charge(sunray);
+
+                Some(PlanetToOrchestrator::SunrayAck {
+                    planet_id: state.id(),
+                    timestamp: SystemTime::now(),
+                })
             },
-            OrchestratorToPlanet::Asteroid(_) => None, //Handled in start method
+            OrchestratorToPlanet::Asteroid(_) => {
+                let result = self.handle_asteroid( state, generator, combinator );
+                Some(PlanetToOrchestrator::AsteroidAck { planet_id: state.id(), rocket: result})
+            }, //Handled in start method
             //OrchestratorToPlanet::StartPlanetAI(_) => {}
             OrchestratorToPlanet::StopPlanetAI(_) => None, //Handled in start method
             //OrchestratorToPlanet::ManualStopPlanetAI(_) => {}
@@ -185,76 +195,132 @@ fn handle_internal_state_request(
 }
 
 
-// ---------------- Tests
+// ---------------- Asteroid Handler Tests -----------
 #[cfg(test)]
-mod test {
+mod asteroid_handler_test {
     use std::sync::mpsc;
-    use common_game::components::planet::{Planet, PlanetType};
+    use common_game::components::planet::{Planet, PlanetAI, PlanetType};
     use common_game::components::resource::{BasicResourceType, ComplexResourceType};
-    use common_game::protocols::messages::{ExplorerToPlanet, OrchestratorToPlanet, PlanetToExplorer, PlanetToOrchestrator};
+    use common_game::protocols::messages::{ExplorerToPlanet, OrchestratorToPlanet, PlanetToExplorer, PlanetToOrchestrator, StartPlanetAiMsg};
     use crate::planetAI::CargonautsPlanet;
     use std::thread;
     use common_game::components::asteroid::Asteroid;
+    use common_game::components::sunray::Sunray;
 
-    #[test]
-    fn test_rocket_handler_with_no_rocket() {
 
-        let toy_struct = CargonautsPlanet::default();
-        let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) : (mpsc::Sender<OrchestratorToPlanet>, mpsc::Receiver<OrchestratorToPlanet>) = mpsc::channel();
-        let (planet_to_orchestrato_sender, planet_to_orchestrator_receiver) : (mpsc::Sender<PlanetToOrchestrator>, mpsc::Receiver<PlanetToOrchestrator>) = mpsc::channel();
-
-        let (explorer_to_planet_sender, explorer_to_planet_receiver) : (mpsc::Sender<ExplorerToPlanet>, mpsc::Receiver<ExplorerToPlanet>) = mpsc::channel();
+    fn planet_to_explorer_channel_creator() ->  (mpsc::Sender<PlanetToExplorer>, mpsc::Receiver<PlanetToExplorer>) {
         let (planet_to_explorer_sender, planet_to_explorer_receiver) : (mpsc::Sender<PlanetToExplorer>, mpsc::Receiver<PlanetToExplorer>) = mpsc::channel();
+        (planet_to_explorer_sender, planet_to_explorer_receiver)
+    }
 
+    fn explorer_to_planet_channels_creator() -> (mpsc::Sender<ExplorerToPlanet>, mpsc::Receiver<ExplorerToPlanet>) {
+        let (explorer_to_planet_sender, explorer_to_planet_receiver) : (mpsc::Sender<ExplorerToPlanet>, mpsc::Receiver<ExplorerToPlanet>) = mpsc::channel();
+        (explorer_to_planet_sender, explorer_to_planet_receiver)
+    }
 
+    fn orchestrator_to_planet_channels_creator() -> (mpsc::Sender<OrchestratorToPlanet>, mpsc::Receiver<OrchestratorToPlanet>) {
+        let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) : (mpsc::Sender<OrchestratorToPlanet>, mpsc::Receiver<OrchestratorToPlanet>) = mpsc::channel();
+        (orchestrator_to_planet_sender, orchestrator_to_planet_receiver)
+    }
+
+    fn planet_to_orchestrator_channels_crator() -> (mpsc::Sender<PlanetToOrchestrator>, mpsc::Receiver<PlanetToOrchestrator>) {
+        let (planet_to_orchestrato_sender, planet_to_orchestrator_receiver) : (mpsc::Sender<PlanetToOrchestrator>, mpsc::Receiver<PlanetToOrchestrator>) = mpsc::channel();
+        (planet_to_orchestrato_sender, planet_to_orchestrator_receiver)
+    }
+
+    fn create_planet<T: PlanetAI>(
+        (planet_to_orchestrator_sender, orchestrator_to_planet_receiver) : (mpsc::Sender<PlanetToOrchestrator>, mpsc::Receiver<OrchestratorToPlanet>),
+        (planet_to_explorer_sender, explorer_to_planet_receiver) : (mpsc::Sender<PlanetToExplorer>, mpsc::Receiver<ExplorerToPlanet>),
+        ai: T
+    ) -> Planet<T> {
         let planet = Planet::new(
             2,
             PlanetType::C,
-            toy_struct,
+            ai,
             vec![BasicResourceType::Silicon],
             vec![ComplexResourceType::Diamond, ComplexResourceType::AIPartner],
-            ( orchestrator_to_planet_receiver, planet_to_orchestrato_sender ),
+            ( orchestrator_to_planet_receiver, planet_to_orchestrator_sender ),
             (explorer_to_planet_receiver, planet_to_explorer_sender)
         );
-
-
-        assert!(planet.is_ok(), "Error on creating the planet");
-
-        let mut unwrapped_planet = planet.unwrap();
-
-        let thread_plane = thread::spawn(move|| {
-            unwrapped_planet.run();
-        });
-
-
-        let asteroid_to_be_send = Asteroid::new();
-        let sent_message_status = orchestrator_to_planet_sender.send( OrchestratorToPlanet::Asteroid( asteroid_to_be_send  ) );
-        assert!(sent_message_status.is_ok());
-
-        let result_message = planet_to_orchestrator_receiver.recv().unwrap();
-        assert!( matches!(result_message, PlanetToOrchestrator::AsteroidAck {planet_id : 2, rocket:  None }) , "Expected rocket not found in the response" )
+        assert!(planet.is_ok(), "Planet creatrion error!");
+        planet.unwrap()
     }
 
     #[test]
-    fn test_rocker_handler_with_rocker() {
+    fn asteroid_with_uncharged_cell() {
         let toy_struct = CargonautsPlanet::default();
-        let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) : (mpsc::Sender<OrchestratorToPlanet>, mpsc::Receiver<OrchestratorToPlanet>) = mpsc::channel();
-        let (planet_to_orchestrato_sender, planet_to_orchestrator_receiver) : (mpsc::Sender<PlanetToOrchestrator>, mpsc::Receiver<PlanetToOrchestrator>) = mpsc::channel();
-        let (explorer_to_planet_sender, explorer_to_planet_receiver) : (mpsc::Sender<ExplorerToPlanet>, mpsc::Receiver<ExplorerToPlanet>) = mpsc::channel();
-        let (planet_to_explorer_sender, planet_to_explorer_receiver) : (mpsc::Sender<PlanetToExplorer>, mpsc::Receiver<PlanetToExplorer>) = mpsc::channel();
-        let planet = Planet::new(
-            2,
-            PlanetType::C,
-            toy_struct,
-            vec![BasicResourceType::Silicon],
-            vec![ComplexResourceType::Diamond, ComplexResourceType::AIPartner],
-            ( orchestrator_to_planet_receiver, planet_to_orchestrato_sender ),
-            (explorer_to_planet_receiver, planet_to_explorer_sender)
+        let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver)  = orchestrator_to_planet_channels_creator();
+        let (planet_to_orchestrato_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_crator();
+
+        let (explorer_to_planet_sender, explorer_to_planet_receiver)  = explorer_to_planet_channels_creator();
+        let (planet_to_explorer_sender, planet_to_explorer_receiver)  = planet_to_explorer_channel_creator();
+
+
+        let mut planet = create_planet(
+            (planet_to_orchestrato_sender, orchestrator_to_planet_receiver),
+            (planet_to_explorer_sender, explorer_to_planet_receiver),
+            toy_struct
         );
-        assert!(planet.is_ok(), "Error on creating the planet");
-        let mut unwrapped_planet = planet.unwrap();
-        let thread_plane = thread::spawn(move|| {
-            unwrapped_planet.run();
+
+        // Spawn the thread:
+        let therad_var = thread::spawn( move || {
+            planet.run();
         });
+
+        // Make the planet start
+        let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::StartPlanetAI( StartPlanetAiMsg ) );
+
+        // Send an asteroid
+        let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::Asteroid( Asteroid::default()) );
+        let planet_response = planet_to_orchestrator_receiver.recv().unwrap();
+        assert!(matches!( planet_response, PlanetToOrchestrator::AsteroidAck { .. } ));
+        assert!(matches!( planet_response, PlanetToOrchestrator::AsteroidAck { planet_id: 2, rocket: None }));
     }
+
+
+    #[test]
+    fn test_asteroid_handler_with_charged_cell() {
+        let toy_struct = CargonautsPlanet::default();
+        let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver)  = orchestrator_to_planet_channels_creator();
+        let (planet_to_orchestrato_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_crator();
+
+        let (explorer_to_planet_sender, explorer_to_planet_receiver)  = explorer_to_planet_channels_creator();
+        let (planet_to_explorer_sender, planet_to_explorer_receiver)  = planet_to_explorer_channel_creator();
+
+
+        let mut planet = create_planet(
+            (planet_to_orchestrato_sender, orchestrator_to_planet_receiver),
+            (planet_to_explorer_sender, explorer_to_planet_receiver),
+            toy_struct
+        );
+
+        // Spawn the thread:
+        let therad_var = thread::spawn( move || {
+            planet.run();
+        });
+
+        // Make the planet start
+        let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::StartPlanetAI( StartPlanetAiMsg ) );
+
+
+        // Send sunrays
+        let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::Sunray( Sunray::default() ) );
+        let sunrays_planet_response = planet_to_orchestrator_receiver.recv();
+        assert!( matches!( sunrays_planet_response.unwrap(), PlanetToOrchestrator::SunrayAck { .. } ), "Did not received a sunrays AKC" );
+
+        // Send the asteroid
+        let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::Asteroid( Asteroid::default() ) );
+        let planet_response = planet_to_orchestrator_receiver.recv();
+        assert!(planet_response.is_ok(), "Error with the response of the planet once the Asteroid");
+
+        if let Ok( planet_response_msg ) = planet_response {
+            assert!( matches!( planet_response_msg, PlanetToOrchestrator::AsteroidAck { planet_id: 2,  rocket: _ }), "Planet answered with a different ID");
+            assert!( matches!( planet_response_msg, PlanetToOrchestrator::AsteroidAck { planet_id: 2,  rocket: Some( _ ) }));
+            assert!( matches!(planet_response_msg, PlanetToOrchestrator::AsteroidAck { .. } ), "The planet did not answer back with a AsteroidAck");
+        }
+    }
+
+
+
+
 }
