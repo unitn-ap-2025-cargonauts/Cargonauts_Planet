@@ -171,7 +171,7 @@ impl PlanetAI for CargonautsPlanet {
     }
 
     fn stop(&mut self, state: &PlanetState) {
-        todo!()
+        self.ai_is_active = true;
     }
 }
 
@@ -365,14 +365,7 @@ fn handle_internal_state_request(
 }
 
 
-// ---------------- Asteroid Handler Tests -----------
-#[cfg(test)]
-mod asteroid_handler_test {
 
-
-
-
-}
 
 #[cfg(test)]
 mod tests {
@@ -453,8 +446,8 @@ mod tests {
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
         let (planet_to_orchestrato_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_crator();
 
-        let (explorer_to_planet_sender, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
-        let (planet_to_explorer_sender, planet_to_explorer_receiver) = planet_to_explorer_channel_creator();
+        let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
+        let (planet_to_explorer_sender, _) = planet_to_explorer_channel_creator();
 
 
         let mut planet = create_planet(
@@ -485,8 +478,8 @@ mod tests {
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
         let (planet_to_orchestrato_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_crator();
 
-        let (explorer_to_planet_sender, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
-        let (planet_to_explorer_sender, planet_to_explorer_receiver) = planet_to_explorer_channel_creator();
+        let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
+        let (planet_to_explorer_sender, _) = planet_to_explorer_channel_creator();
 
 
         let mut planet = create_planet(
@@ -519,6 +512,37 @@ mod tests {
             assert!(matches!( planet_response_msg, PlanetToOrchestrator::AsteroidAck { planet_id: 2,  rocket: Some( _ ) }));
             assert!(matches!(planet_response_msg, PlanetToOrchestrator::AsteroidAck { .. } ), "The planet did not answer back with a AsteroidAck");
         }
+    }
+
+    #[test]
+    fn test_rocket_with_disabled_ai() {
+
+        use common_game::protocols::messages::StopPlanetAiMsg;
+
+        let toy_struct = CargonautsPlanet::default();
+        let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
+        let (planet_to_orchestrato_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_crator();
+
+        let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
+        let (planet_to_explorer_sender, _) = planet_to_explorer_channel_creator();
+
+
+        let mut planet = create_planet(
+            (planet_to_orchestrato_sender, orchestrator_to_planet_receiver),
+            (planet_to_explorer_sender, explorer_to_planet_receiver),
+            toy_struct
+        );
+
+
+        // Shutdown the planet AI
+        let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::StopPlanetAI( StopPlanetAiMsg ) );
+        let _ = planet_to_orchestrator_receiver.recv().unwrap();
+
+        // Send the asteroid
+        let _ = orchestrator_to_planet_sender.send(OrchestratorToPlanet::Asteroid(Asteroid::default()));
+        let planet_response = planet_to_orchestrator_receiver.recv();
+        assert!(planet_response.is_ok(), "Error with the response of the planet once the Asteroid");
+        assert!( matches!(planet_response.unwrap(), PlanetToOrchestrator::AsteroidAck {planet_id: _, rocket: None}), "The AI should be stopped thus the planet should not be able to send with a rocket" );
     }
 
     /*#[test]
