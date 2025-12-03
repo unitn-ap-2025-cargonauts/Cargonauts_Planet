@@ -6,6 +6,7 @@
 //!
 //! Each handler is defined as a standalone function to keep the logic modular and clean.
 
+use std::sync::mpsc;
 use common_game::components::planet::*;
 use common_game::components::resource::*;
 use common_game::components::rocket::Rocket;
@@ -40,7 +41,6 @@ impl PlanetAI for CargonautsPlanet {
 
                 Some(PlanetToOrchestrator::SunrayAck {
                     planet_id: state.id(),
-                    timestamp: SystemTime::now(),
                 })
             }
 
@@ -55,29 +55,38 @@ impl PlanetAI for CargonautsPlanet {
             }
 
             //same here and for stop planetAi
-            OrchestratorToPlanet::StartPlanetAI(_) => {
+            OrchestratorToPlanet::StartPlanetAI => {
                 self.start(state);
 
                 Some(PlanetToOrchestrator::StartPlanetAIResult {
                     planet_id: state.id(),
-                    timestamp: SystemTime::now(),
                 })
             }
 
-            OrchestratorToPlanet::StopPlanetAI(_) => {
+            OrchestratorToPlanet::StopPlanetAI => {
                 self.stop(state);
 
                 Some(PlanetToOrchestrator::StopPlanetAIResult {
                     planet_id: state.id(),
-                    timestamp: SystemTime::now(),
                 })
             }
 
-            OrchestratorToPlanet::InternalStateRequest(_) => {
+            OrchestratorToPlanet::InternalStateRequest=> {
                 todo!(
                     "Waiting for upstream fix: PlanetState allows no cloning nor manual construction"
                 );
             }
+
+            OrchestratorToPlanet::IncomingExplorerRequest {
+                explorer_id: _,
+                new_mpsc_sender: _
+            } => {
+                todo!()
+            }
+
+            OrchestratorToPlanet::OutgoingExplorerRequest {explorer_id: _} => {
+                todo!();
+            },
         }
     }
     
@@ -109,10 +118,6 @@ impl PlanetAI for CargonautsPlanet {
                 //info!("AvailableEnergyCellRequest received from explorer[{}]", explorer_id);
                 handle_energy_cell_request(state)
             },
-            ExplorerToPlanet::InternalStateRequest { explorer_id } => {
-                //info!("InternalStateRequest received from explorer[{}]", explorer_id);
-                handle_internal_state_request(state, explorer_id)
-            }
             _ => panic!("Unexpected message")
         }
     }
@@ -193,7 +198,7 @@ impl PlanetAI for CargonautsPlanet {
 fn handle_supported_resource_request(
     generator: &Generator,
 ) -> Option<PlanetToExplorer> {
-    let resource_list = Some(generator.all_available_recipes());
+    let resource_list = generator.all_available_recipes();
     Some(PlanetToExplorer::SupportedResourceResponse { resource_list })
 }
 
@@ -216,7 +221,7 @@ fn handle_supported_resource_request(
 fn handle_supported_combination_request(
     combinator: &Combinator,
 ) -> Option<PlanetToExplorer> {
-    let combination_list = Some(combinator.all_available_recipes());
+    let combination_list = combinator.all_available_recipes();
     Some(PlanetToExplorer::SupportedCombinationResponse  { combination_list })
 }
 
@@ -378,7 +383,7 @@ mod tests {
     use common_game::components::sunray::Sunray;
     use common_game::components::resource::{BasicResourceType, ComplexResourceType};
     use common_game::components::planet::{Planet, PlanetAI, PlanetType};
-    use common_game::protocols::messages::{ExplorerToPlanet, OrchestratorToPlanet, PlanetToExplorer, PlanetToOrchestrator, StartPlanetAiMsg};
+    use common_game::protocols::messages::{ExplorerToPlanet, OrchestratorToPlanet, PlanetToExplorer, PlanetToOrchestrator};
     use crate::planetAI::CargonautsPlanet;
 
     // Function that create a Planet with specific arguments
@@ -424,11 +429,11 @@ mod tests {
         (planet_to_orchestrato_sender, planet_to_orchestrator_receiver)
     }
 
-    fn create_planet<T: PlanetAI>(
+    fn create_planet(
         (planet_to_orchestrator_sender, orchestrator_to_planet_receiver): (mpsc::Sender<PlanetToOrchestrator>, mpsc::Receiver<OrchestratorToPlanet>),
         (planet_to_explorer_sender, explorer_to_planet_receiver): (mpsc::Sender<PlanetToExplorer>, mpsc::Receiver<ExplorerToPlanet>),
-        ai: T
-    ) -> Planet<T> {
+        ai: Box<dyn PlanetAI>
+    ) -> Planet {
         let planet = Planet::new(
             2,
             PlanetType::C,
@@ -455,7 +460,7 @@ mod tests {
         let mut planet = create_planet(
             (planet_to_orchestrato_sender, orchestrator_to_planet_receiver),
             (planet_to_explorer_sender, explorer_to_planet_receiver),
-            toy_struct
+            Box::from(toy_struct)
         );
 
         // Spawn the thread:
@@ -464,7 +469,7 @@ mod tests {
         });
 
         // Make the planet start
-        let _ = orchestrator_to_planet_sender.send(OrchestratorToPlanet::StartPlanetAI(StartPlanetAiMsg));
+        let _ = orchestrator_to_planet_sender.send(OrchestratorToPlanet::StartPlanetAI);
 
         // Send an asteroid
         let _ = orchestrator_to_planet_sender.send(OrchestratorToPlanet::Asteroid(Asteroid::default()));
@@ -487,7 +492,7 @@ mod tests {
         let mut planet = create_planet(
             (planet_to_orchestrato_sender, orchestrator_to_planet_receiver),
             (planet_to_explorer_sender, explorer_to_planet_receiver),
-            toy_struct
+            Box::from(toy_struct)
         );
 
         // Spawn the thread:
@@ -496,7 +501,7 @@ mod tests {
         });
 
         // Make the planet start
-        let _ = orchestrator_to_planet_sender.send(OrchestratorToPlanet::StartPlanetAI(StartPlanetAiMsg));
+        let _ = orchestrator_to_planet_sender.send(OrchestratorToPlanet::StartPlanetAI);
 
 
         // Send sunrays
