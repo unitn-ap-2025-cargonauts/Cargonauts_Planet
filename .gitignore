@@ -27,9 +27,6 @@
 .idea/**/uiDesigner.xml
 .idea/**/dbnavigator.xml
 
-# Gradle
-.idea/**/gradle.xml
-.idea/**/libraries
 
 # Gradle and Maven with auto-import
 # When using Gradle or Maven with auto-import, you should exclude module files,
@@ -77,8 +74,6 @@ fabric.properties
 # Editor-based Rest Client
 .idea/httpRequests
 
-# Android studio 3.1+ serialized cache file
-.idea/caches/build_file_checksums.ser
 
 ### JetBrains+all Patch ###
 # Ignore everything but code style settings and run configurations
