@@ -12,15 +12,19 @@ use common_game::components::resource::*;
 use common_game::components::rocket::Rocket;
 use common_game::protocols::messages::*;
 use std::time::SystemTime;
+use common_game::components::energy_cell::EnergyCell;
+use common_game::components::sunray::Sunray;
 
 struct CargonautsPlanet {
-    ai_is_active: bool
+    ai_is_active: bool,
+    external_energy_cells: Vec<Sunray>
 }
 
 impl Default for CargonautsPlanet {
     fn default() -> Self {
         Self {
-            ai_is_active: true
+            ai_is_active: true,
+            external_energy_cells: Vec::new()
         }
     }
 }
@@ -36,12 +40,25 @@ impl PlanetAI for CargonautsPlanet {
         match msg {
             // Charge single cell at vector (position 0 because the planet is of Type C
             OrchestratorToPlanet::Sunray(sunray) => {
-                let cell = state.cell_mut(0);
+                /*let cell = state.cell_mut(0);
                 cell.charge(sunray);
 
                 Some(PlanetToOrchestrator::SunrayAck {
                     planet_id: state.id(),
+                })*/
+                // check if the cell is charged
+                let mut our_cell = state.cells_iter();
+                let at_lest_one_charged = our_cell.any(|energy_cell_iter| energy_cell_iter.is_charged());
+                if at_lest_one_charged {
+                    self.external_energy_cells.push(sunray);
+                } else {
+                    state.cell_mut(0).charge(sunray);
+                }
+
+                Some(PlanetToOrchestrator::SunrayAck {
+                    planet_id: state.id(),
                 })
+
             }
 
             // Use the method to be implemented later
@@ -171,7 +188,7 @@ impl PlanetAI for CargonautsPlanet {
     }
 
     fn stop(&mut self, state: &PlanetState) {
-        self.ai_is_active = true;
+        self.ai_is_active = false;
     }
 }
 
@@ -517,7 +534,37 @@ mod tests {
     #[test]
     fn test_rocket_with_disabled_ai() {
 
-        use common_game::protocols::messages::StopPlanetAiMsg;
+        let toy_struct = CargonautsPlanet::default();
+        let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
+        let (planet_to_orchestrato_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_crator();
+
+        let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
+        let (planet_to_explorer_sender, _) = planet_to_explorer_channel_creator();
+
+
+        let mut planet = create_planet(
+            (planet_to_orchestrato_sender, orchestrator_to_planet_receiver),
+            (planet_to_explorer_sender, explorer_to_planet_receiver),
+            Box::from(toy_struct)
+        );
+
+        // Start the AI (disabled by default)
+        let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::StartPlanetAI);
+        let _ = planet_to_orchestrator_receiver.recv().unwrap();
+
+        // Shutdown the planet AI. Note that I should not wait for the response
+        let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::StopPlanetAI );
+
+
+        // Send the asteroid
+        let _ = orchestrator_to_planet_sender.send(OrchestratorToPlanet::Asteroid(Asteroid::default()));
+        let planet_response = planet_to_orchestrator_receiver.recv();
+        assert!(planet_response.is_ok(), "Error with the response of the planet once the Asteroid");
+        assert!( matches!(planet_response.unwrap(), PlanetToOrchestrator::AsteroidAck {planet_id: _, rocket: None}), "The AI should be stopped thus the planet should not be able to send with a rocket" );
+    }
+
+    #[test]
+    fn test_start_and_stop_planet_ai() {
 
         let toy_struct = CargonautsPlanet::default();
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
@@ -530,19 +577,64 @@ mod tests {
         let mut planet = create_planet(
             (planet_to_orchestrato_sender, orchestrator_to_planet_receiver),
             (planet_to_explorer_sender, explorer_to_planet_receiver),
-            toy_struct
+            Box::from(toy_struct)
         );
 
 
-        // Shutdown the planet AI
-        let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::StopPlanetAI( StopPlanetAiMsg ) );
-        let _ = planet_to_orchestrator_receiver.recv().unwrap();
+        let planet_thread = thread::spawn(move|| {
 
-        // Send the asteroid
-        let _ = orchestrator_to_planet_sender.send(OrchestratorToPlanet::Asteroid(Asteroid::default()));
-        let planet_response = planet_to_orchestrator_receiver.recv();
-        assert!(planet_response.is_ok(), "Error with the response of the planet once the Asteroid");
-        assert!( matches!(planet_response.unwrap(), PlanetToOrchestrator::AsteroidAck {planet_id: _, rocket: None}), "The AI should be stopped thus the planet should not be able to send with a rocket" );
+            planet.run()
+        } );
+
+        // send start AI message
+        let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::StartPlanetAI );
+        let response = planet_to_orchestrator_receiver.recv();
+        assert!(response.is_ok(), "Error on .recv() method while testing the start planet ai");
+        assert!( matches!( response.unwrap(), PlanetToOrchestrator::StartPlanetAIResult { .. } ), "Expected a StartPlanetAIResult as response" );
+
+        // send stop AI message
+        let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::StopPlanetAI );
+        let response = planet_to_orchestrator_receiver.recv();
+        assert!(response.is_ok(), "Error on .recv() method while testing the stop planet ai");
+        assert!( matches!( response.unwrap(), PlanetToOrchestrator::StopPlanetAIResult { .. } ), "Expected a StartPlanetAIResult as response" );
+    }
+
+
+    #[test]
+    fn sunrays_collector() {
+
+        let toy_struct = CargonautsPlanet::default();
+        let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
+        let (planet_to_orchestrato_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_crator();
+
+        let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
+        let (planet_to_explorer_sender, _) = planet_to_explorer_channel_creator();
+
+
+        let mut planet = create_planet(
+            (planet_to_orchestrato_sender, orchestrator_to_planet_receiver),
+            (planet_to_explorer_sender, explorer_to_planet_receiver),
+            Box::from(toy_struct)
+        );
+
+
+        let planet_thread = thread::spawn(move|| {
+            planet.run()
+        } );
+
+        // Start planet AI
+        let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::StartPlanetAI );
+        let response = planet_to_orchestrator_receiver.recv();
+
+        // Send many sunrays
+        for _ in 1..5 {
+            let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::Sunray(Sunray::default()) );
+        }
+
+        // Check the charging level
+
+
+
     }
 
     /*#[test]
