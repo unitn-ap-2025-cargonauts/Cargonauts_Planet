@@ -6,12 +6,10 @@
 //!
 //! Each handler is defined as a standalone function to keep the logic modular and clean.
 
-use std::sync::mpsc;
 use common_game::components::planet::*;
 use common_game::components::resource::*;
 use common_game::components::rocket::Rocket;
 use common_game::protocols::messages::*;
-use std::time::SystemTime;
 
 struct CargonautsPlanet {
     ai_is_active: bool
@@ -33,6 +31,7 @@ impl PlanetAI for CargonautsPlanet {
         combinator: &Combinator,
         msg: OrchestratorToPlanet,
     ) -> Option<PlanetToOrchestrator> {
+
         match msg {
             // Charge single cell at vector (position 0 because the planet is of Type C
             OrchestratorToPlanet::Sunray(sunray) => {
@@ -99,26 +98,26 @@ impl PlanetAI for CargonautsPlanet {
     ) -> Option<PlanetToExplorer> {
         match msg {
             ExplorerToPlanet::SupportedResourceRequest { explorer_id } => {
-                //info!("SupportedResourceRequest received from explorer[{}]", explorer_id);
+                println!("SupportedResourceRequest received from explorer[{}]", explorer_id);
                 handle_supported_resource_request(generator)
             },
             ExplorerToPlanet::SupportedCombinationRequest { explorer_id } => {
-                //info!("SupportedCombinationRequest received from explorer[{}]", explorer_id);
+                println!("SupportedCombinationRequest received from explorer[{}]", explorer_id);
                 handle_supported_combination_request(combinator)
             },
             ExplorerToPlanet::GenerateResourceRequest { explorer_id, resource } => {
-                //info!("GenerateResourceRequest received from explorer[{}]. Ask for generate {:?}", explorer_id, resource);
+                println!("GenerateResourceRequest received from explorer[{}]. Ask for generate {:?}", explorer_id, resource);
                 handle_generate_resource_request(state, generator, resource)
             },
             ExplorerToPlanet::CombineResourceRequest { explorer_id, msg } => {
-                //info!("CombineResourceRequest received from explorer[{}]. Ask for craft {:?}", explorer_id, msg);
+                println!("CombineResourceRequest received from explorer[{}]. Ask for craft {:?}", explorer_id, msg);
                 handle_combine_resource_request(state, combinator, msg)
             },
             ExplorerToPlanet::AvailableEnergyCellRequest { explorer_id } => {
-                //info!("AvailableEnergyCellRequest received from explorer[{}]", explorer_id);
+                println!("AvailableEnergyCellRequest received from explorer[{}]", explorer_id);
                 handle_energy_cell_request(state)
             },
-            _ => panic!("Unexpected message")
+            //_ => panic!("Unexpected message")
         }
     }
 
@@ -179,7 +178,7 @@ impl PlanetAI for CargonautsPlanet {
 
 
 // === ExplorerToPlanet Handler ====================================================================
-/// This handler returns a `SupportedResourceResponse` message that wrap the list of basic resources
+/// This handler returns a [SupportedResourceResponse] message that wrap the list of basic resources
 /// that the planet can currently generate
 ///
 /// # Parameters
@@ -194,7 +193,7 @@ impl PlanetAI for CargonautsPlanet {
 /// # Logic
 /// The planet can craft basic resources, so the handler:
 /// - Get the set of available basic resource from the planet generator
-/// - Wrap the set in a `SupportedResourceResponse` message and return it
+/// - Wrap the set in a [SupportedResourceResponse] message and return it
 fn handle_supported_resource_request(
     generator: &Generator,
 ) -> Option<PlanetToExplorer> {
@@ -202,7 +201,7 @@ fn handle_supported_resource_request(
     Some(PlanetToExplorer::SupportedResourceResponse { resource_list })
 }
 
-/// This handler returns a `SupportedCombinationResponse` message that wrap the list of complex resources
+/// This handler returns a [SupportedCombinationResponse] message that wrap the list of complex resources
 /// that the planet can currently generate
 ///
 /// # Parameters
@@ -217,17 +216,18 @@ fn handle_supported_resource_request(
 /// # Logic
 /// The planet can craft complex resources, so the handler:
 /// - Get the set of available complex resource from the planet combinator
-/// - Wrap the set in a `SupportedCombinationResponse` message and return it
+/// - Wrap the set in a [SupportedCombinationResponse] message and return it
 fn handle_supported_combination_request(
     combinator: &Combinator,
 ) -> Option<PlanetToExplorer> {
     let combination_list = combinator.all_available_recipes();
+
     Some(PlanetToExplorer::SupportedCombinationResponse  { combination_list })
 }
 
 /// This handler processes a request to generate a basic resource using the planet's generator, 
 /// if energy is available.
-/// It returns a `GenerateResourceResponse` message containing the generated resource.
+/// It returns a [GenerateResourceResponse] message containing the generated resource.
 ///
 /// # Parameters
 /// - `state`: Mutable reference to the planet state.
@@ -247,9 +247,9 @@ fn handle_supported_combination_request(
 /// - Retrieve the energy cell and check if it is charged
 /// - If charged:
 ///     - Attempt to generate the requested basic resource via the generator
-///     - Wrap the generated resource in a `GenerateResourceResponse` message and return it.
+///     - Wrap the generated resource in a [GenerateResourceResponse] message and return it.
 /// - Else:
-///     - Wrap a `None` in a `GenerateResourceResponse` message and return it.
+///     - Wrap a `None` in a [GenerateResourceResponse] message and return it.
 fn handle_generate_resource_request(
     state: &mut PlanetState,
     generator: &Generator,
@@ -273,13 +273,13 @@ fn handle_generate_resource_request(
 
 /// This handler processes a request to combine two basic or complex resources
 /// into a new complex resource using the planet's combinator, if energy is available.
-/// It returns a `CombineResourceResponse` message containing the newly
+/// It returns a [CombineResourceResponse] message containing the newly
 /// crafted complex resource.
 ///
 /// # Parameters
 /// - `state`: Mutable reference to the planet state.
 /// - `combinator`: Reference to the planet's combinator.
-/// - `msg`: A `ComplexResourceRequest` specifying which complex resource the
+/// - `msg`: A [ComplexResourceRequest] specifying which complex resource the
 ///   explorer want to craft, with the ingredients required.
 ///
 /// # Returns
@@ -295,9 +295,9 @@ fn handle_generate_resource_request(
 /// - Retrieve the energy cell and check if it is charged.
 /// - If charged:
 ///     - Attempt to combine the provided ingredients using the combinator.
-///     - Wrap the produced resource in a `CombineResourceResponse` message and return it.
+///     - Wrap the produced resource in a [CombineResourceResponse] message and return it.
 /// - Else:
-///     - Wrap a `None` in a `CombineResourceResponse` message and return it.
+///     - Wrap a `None` in a [CombineResourceResponse] message and return it.
 fn handle_combine_resource_request(
     state: &mut PlanetState,
     combinator: &Combinator,
@@ -325,7 +325,7 @@ fn handle_combine_resource_request(
     Some(PlanetToExplorer::CombineResourceResponse { complex_response })
 }
 
-/// This handler returns an `AvailableEnergyCellResponse` message containing
+/// This handler returns an [AvailableEnergyCellResponse] message containing
 /// the number of currently charged energy cells available on the planet.
 /// Since the planet has only one energy cell, the value can only be 0 or 1.
 ///
@@ -344,7 +344,7 @@ fn handle_combine_resource_request(
 /// The handler:
 /// - Initializes a counter to 0
 /// - Accesses the energy cell and increments the counter if it is charged
-/// - Wraps the counter inside an `AvailableEnergyCellResponse` message and returns it
+/// - Wraps the counter inside an [AvailableEnergyCellResponse] message and returns it
 fn handle_energy_cell_request(
     state: &PlanetState,
 ) -> Option<PlanetToExplorer> {
@@ -355,52 +355,17 @@ fn handle_energy_cell_request(
     Some(PlanetToExplorer::AvailableEnergyCellResponse { available_cells })
 }
 
-///TODO fn handle_internal_state_request description
-fn handle_internal_state_request(
-    state: &PlanetState,
-    explorer_id: u32,
-) -> Option<PlanetToExplorer> {
-    /*Some(PlanetToExplorer::InternalStateResponse { planet_state: state })*/ //TODO find out the utility of this msg and ask if is need to pass the only ref and not the whole ownership
-    todo!()
-}
-
-
-
-
 #[cfg(test)]
 mod tests {
-    use std::sync::mpsc;
-    //use std::collections::HashSet;
+    use std::sync::{mpsc, Arc, Mutex};
+    use std::collections::HashSet;
     use std::thread;
     use common_game::components::asteroid::Asteroid;
     use common_game::components::sunray::Sunray;
     use common_game::components::resource::{BasicResourceType, ComplexResourceType};
     use common_game::components::planet::{Planet, PlanetAI, PlanetType};
     use common_game::protocols::messages::{ExplorerToPlanet, OrchestratorToPlanet, PlanetToExplorer, PlanetToOrchestrator};
-    use crate::planetAI::CargonautsPlanet;
-
-    // Function that create a Planet with specific arguments
-    /*fn create_planet(
-        id: u32,
-        planet_type: PlanetType,
-        gen_rules: Vec<BasicResourceType>,
-        comb_rules: Vec<ComplexResourceType>
-    ) -> Planet<CargonautsPlanet> {
-        let (to_orchestrator_tx, _to_orchestrator_rx) = mpsc::channel(); // Planet -> Orchestrator
-        let (_from_orchestrator_tx, from_orchestrator_rx) = mpsc::channel(); // Orchestrator -> Planet
-        let (to_explorer_tx, _to_explorer_rx) = mpsc::channel(); // Planet -> Explorer
-        let (_from_explorer_tx, from_explorer_rx) = mpsc::channel(); // Explorer -> Planet
-
-        Planet::new(
-            id,
-            planet_type,
-            CargonautsPlanet::default(),
-            gen_rules,
-            comb_rules,
-            (from_orchestrator_rx, to_orchestrator_tx),
-            (from_explorer_rx, to_explorer_tx),
-        ).expect("Failed to create planet")
-    }*/
+    use crate::planetAI::{handle_energy_cell_request, handle_supported_combination_request, handle_supported_resource_request, CargonautsPlanet};
 
     fn planet_to_explorer_channel_creator() -> (mpsc::Sender<PlanetToExplorer>, mpsc::Receiver<PlanetToExplorer>) {
         let (planet_to_explorer_sender, planet_to_explorer_receiver): (mpsc::Sender<PlanetToExplorer>, mpsc::Receiver<PlanetToExplorer>) = mpsc::channel();
@@ -417,26 +382,27 @@ mod tests {
         (orchestrator_to_planet_sender, orchestrator_to_planet_receiver)
     }
 
-    fn planet_to_orchestrator_channels_crator() -> (mpsc::Sender<PlanetToOrchestrator>, mpsc::Receiver<PlanetToOrchestrator>) {
-        let (planet_to_orchestrato_sender, planet_to_orchestrator_receiver): (mpsc::Sender<PlanetToOrchestrator>, mpsc::Receiver<PlanetToOrchestrator>) = mpsc::channel();
-        (planet_to_orchestrato_sender, planet_to_orchestrator_receiver)
+    fn planet_to_orchestrator_channels_creator() -> (mpsc::Sender<PlanetToOrchestrator>, mpsc::Receiver<PlanetToOrchestrator>) {
+        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver): (mpsc::Sender<PlanetToOrchestrator>, mpsc::Receiver<PlanetToOrchestrator>) = mpsc::channel();
+        (planet_to_orchestrator_sender, planet_to_orchestrator_receiver)
     }
 
+    // Function that create a Planet with specific arguments
     fn create_planet(
-        (planet_to_orchestrator_sender, orchestrator_to_planet_receiver): (mpsc::Sender<PlanetToOrchestrator>, mpsc::Receiver<OrchestratorToPlanet>),
-        (planet_to_explorer_sender, explorer_to_planet_receiver): (mpsc::Sender<PlanetToExplorer>, mpsc::Receiver<ExplorerToPlanet>),
+        orch_channels: (mpsc::Receiver<OrchestratorToPlanet>, mpsc::Sender<PlanetToOrchestrator>),
+        explorer_channels: (mpsc::Receiver<ExplorerToPlanet>, mpsc::Sender<PlanetToExplorer>),
         ai: Box<dyn PlanetAI>
     ) -> Planet {
         let planet = Planet::new(
             2,
             PlanetType::C,
             ai,
-            vec![BasicResourceType::Silicon],
-            vec![ComplexResourceType::Diamond, ComplexResourceType::AIPartner],
-            (orchestrator_to_planet_receiver, planet_to_orchestrator_sender),
-            (explorer_to_planet_receiver, planet_to_explorer_sender)
+            vec![BasicResourceType::Carbon],
+            vec![ComplexResourceType::Diamond, ComplexResourceType::Life],
+            orch_channels,
+            explorer_channels
         );
-        assert!(planet.is_ok(), "Planet creatrion error!");
+        assert!(planet.is_ok(), "Planet creation error!");
         planet.unwrap()
     }
 
@@ -444,20 +410,20 @@ mod tests {
     fn asteroid_with_uncharged_cell() {
         let toy_struct = CargonautsPlanet::default();
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
-        let (planet_to_orchestrato_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_crator();
+        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
 
         let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
         let (planet_to_explorer_sender, _) = planet_to_explorer_channel_creator();
 
 
         let mut planet = create_planet(
-            (planet_to_orchestrato_sender, orchestrator_to_planet_receiver),
-            (planet_to_explorer_sender, explorer_to_planet_receiver),
+            (orchestrator_to_planet_receiver, planet_to_orchestrator_sender),
+            (explorer_to_planet_receiver, planet_to_explorer_sender),
             Box::from(toy_struct)
         );
 
         // Spawn the thread:
-        let therad_var = thread::spawn(move || {
+        let thread_var = thread::spawn(move || {
             planet.run();
         });
 
@@ -476,20 +442,20 @@ mod tests {
     fn test_asteroid_handler_with_charged_cell() {
         let toy_struct = CargonautsPlanet::default();
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
-        let (planet_to_orchestrato_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_crator();
+        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
 
         let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
         let (planet_to_explorer_sender, _) = planet_to_explorer_channel_creator();
 
 
         let mut planet = create_planet(
-            (planet_to_orchestrato_sender, orchestrator_to_planet_receiver),
-            (planet_to_explorer_sender, explorer_to_planet_receiver),
+            (orchestrator_to_planet_receiver, planet_to_orchestrator_sender),
+            (explorer_to_planet_receiver, planet_to_explorer_sender),
             Box::from(toy_struct)
         );
 
         // Spawn the thread:
-        let therad_var = thread::spawn(move || {
+        let thread_var = thread::spawn(move || {
             planet.run();
         });
 
@@ -516,26 +482,23 @@ mod tests {
 
     #[test]
     fn test_rocket_with_disabled_ai() {
-
-        use common_game::protocols::messages::StopPlanetAiMsg;
-
         let toy_struct = CargonautsPlanet::default();
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
-        let (planet_to_orchestrato_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_crator();
+        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
 
         let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
         let (planet_to_explorer_sender, _) = planet_to_explorer_channel_creator();
 
 
         let mut planet = create_planet(
-            (planet_to_orchestrato_sender, orchestrator_to_planet_receiver),
-            (planet_to_explorer_sender, explorer_to_planet_receiver),
-            toy_struct
+            (orchestrator_to_planet_receiver, planet_to_orchestrator_sender),
+            (explorer_to_planet_receiver, planet_to_explorer_sender),
+            Box::from(toy_struct)
         );
 
 
         // Shutdown the planet AI
-        let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::StopPlanetAI( StopPlanetAiMsg ) );
+        let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::StopPlanetAI );
         let _ = planet_to_orchestrator_receiver.recv().unwrap();
 
         // Send the asteroid
@@ -545,24 +508,26 @@ mod tests {
         assert!( matches!(planet_response.unwrap(), PlanetToOrchestrator::AsteroidAck {planet_id: _, rocket: None}), "The AI should be stopped thus the planet should not be able to send with a rocket" );
     }
 
-    /*#[test]
-    fn test_base_handle_supported_resource_request() {
-        let planet_id = 0;
-        let planet_type = PlanetType::C;
-        let gen_rules = vec![BasicResourceType::Carbon];
-        let comb_rules = vec![];
-        let planet = create_planet(planet_id, planet_type, gen_rules.clone(), comb_rules);
+    #[test]
+    fn test_unit_handle_supported_resource_request() {
+        let (to_orchestrator_tx, _to_orchestrator_rx) = mpsc::channel(); // Planet -> Orchestrator
+        let (_from_orchestrator_tx, from_orchestrator_rx) = mpsc::channel(); // Orchestrator -> Planet
+        let (to_explorer_tx, _to_explorer_rx) = mpsc::channel(); // Planet -> Explorer
+        let (_from_explorer_tx, from_explorer_rx) = mpsc::channel(); // Explorer -> Planet
 
-        let result = handle_supported_resource_request(planet.generator()); //TODO wait for the add of getter and than test
+        let planet = create_planet(
+            (from_orchestrator_rx, to_orchestrator_tx),
+            (from_explorer_rx, to_explorer_tx),
+            Box::from(CargonautsPlanet::default())
+        );
+
+        let result = handle_supported_resource_request(planet.generator());
 
         assert!(result.is_some());
 
         if let Some(PlanetToExplorer::SupportedResourceResponse { resource_list }) = result {
-            assert!(resource_list.is_some());
-            let resource_vec = resource_list.unwrap();
-
-            let result_set: HashSet<BasicResourceType> = resource_vec.into_iter().collect();
-            let expected_set: HashSet<BasicResourceType> = gen_rules.into_iter().collect();
+            let result_set: HashSet<BasicResourceType> = resource_list.into_iter().collect();
+            let expected_set: HashSet<BasicResourceType> = vec![BasicResourceType::Carbon].into_iter().collect();
             assert_eq!(result_set, expected_set);
         } else {
             panic!("Expected SupportedResourceResponse variant");
@@ -570,36 +535,91 @@ mod tests {
     }
 
     #[test]
-    fn test_base_handle_supported_combination_request() {
-        let planet_id = 0;
-        let planet_type = PlanetType::C;
-        let gen_rules = vec![BasicResourceType::Carbon];
-        let comb_rules = vec![ComplexResourceType::Diamond, ComplexResourceType::Life];
-        let planet = create_planet(planet_id, planet_type, gen_rules, comb_rules.clone());
+    fn test_unit_handle_supported_combination_request() {
+        let (to_orchestrator_tx, _to_orchestrator_rx) = mpsc::channel(); // Planet -> Orchestrator
+        let (_from_orchestrator_tx, from_orchestrator_rx) = mpsc::channel(); // Orchestrator -> Planet
+        let (to_explorer_tx, _to_explorer_rx) = mpsc::channel(); // Planet -> Explorer
+        let (_from_explorer_tx, from_explorer_rx) = mpsc::channel(); // Explorer -> Planet
 
-        let result = handle_supported_combination_request(planet.combinator()); //TODO wait for the add of getter and than test
+        let planet = create_planet(
+            (from_orchestrator_rx, to_orchestrator_tx),
+            (from_explorer_rx, to_explorer_tx),
+            Box::from(CargonautsPlanet::default())
+        );
+
+        let result = handle_supported_combination_request(planet.combinator());
 
         assert!(result.is_some());
 
         if let Some(PlanetToExplorer::SupportedCombinationResponse { combination_list }) = result {
-            assert!(combination_list.is_some());
-            let resource_vec = combination_list.unwrap();
-
-            let result_set: HashSet<ComplexResourceType> = resource_vec.into_iter().collect();
-            let expected_set: HashSet<ComplexResourceType> = comb_rules.into_iter().collect();
+            let result_set: HashSet<ComplexResourceType> = combination_list.into_iter().collect();
+            let expected_set: HashSet<ComplexResourceType> = vec![ComplexResourceType::Diamond, ComplexResourceType::Life].into_iter().collect();
             assert_eq!(result_set, expected_set);
         } else {
             panic!("Expected SupportedCombinationResponse variant");
         }
-    }*/
-
-    /*#[test]
-    fn test_base_handle_energy_cell_request_charge() {
-        todo!()
     }
 
     #[test]
-    fn test_base_handle_energy_cell_request_discharge() {
-        todo!()
-    }*/
+    fn test_integration_handle_orchestrator_msg_sunray_and_handle_energy_cell_request_charge() {
+        let (to_orchestrator_tx, _to_orchestrator_rx) = mpsc::channel();
+        let (from_orchestrator_tx, from_orchestrator_rx) = mpsc::channel();
+        let (to_explorer_tx, _to_explorer_rx) = mpsc::channel();
+        let (_from_explorer_tx, from_explorer_rx) = mpsc::channel();
+
+        let planet = Arc::new(Mutex::new(create_planet(
+            (from_orchestrator_rx, to_orchestrator_tx),
+            (from_explorer_rx, to_explorer_tx),
+            Box::from(CargonautsPlanet::default())
+        )));
+
+        let planet_for_thread = Arc::clone(&planet);
+
+        let thread_var = thread::spawn(move || {
+            planet_for_thread.lock().unwrap().run();
+        });
+
+        let _ = from_orchestrator_tx.send(OrchestratorToPlanet::StartPlanetAI);
+        let _ = from_orchestrator_tx.send(OrchestratorToPlanet::Sunray(Sunray::default()));
+        let _ = from_orchestrator_tx.send(OrchestratorToPlanet::StopPlanetAI);
+
+        drop(from_orchestrator_tx);
+        let _ = thread_var.join();
+
+        let planet_guard = planet.lock().unwrap();
+        let result = handle_energy_cell_request(planet_guard.state());
+
+        assert!(result.is_some());
+
+        if let Some(PlanetToExplorer::AvailableEnergyCellResponse { available_cells }) = result {
+            assert_eq!(available_cells, 1);
+        } else {
+            panic!("Expected AvailableEnergyCellResponse");
+        }
+    }
+
+    #[test]
+    fn test_unit_handle_energy_cell_request_discharge() {
+        let (to_orchestrator_tx, _to_orchestrator_rx) = mpsc::channel(); // Planet -> Orchestrator
+        let (_from_orchestrator_tx, from_orchestrator_rx) = mpsc::channel(); // Orchestrator -> Planet
+        let (to_explorer_tx, _to_explorer_rx) = mpsc::channel(); // Planet -> Explorer
+        let (_from_explorer_tx, from_explorer_rx) = mpsc::channel(); // Explorer -> Planet
+
+        let planet = create_planet(
+            (from_orchestrator_rx, to_orchestrator_tx),
+            (from_explorer_rx, to_explorer_tx),
+            Box::from(CargonautsPlanet::default())
+        );
+
+        let result = handle_energy_cell_request(planet.state());
+
+        assert!(result.is_some());
+
+        if let Some(PlanetToExplorer::AvailableEnergyCellResponse { available_cells }) = result {
+            let expected_usize = 0;
+            assert_eq!(available_cells, expected_usize);
+        } else {
+            panic!("Expected SupportedCombinationResponse variant");
+        }
+    }
 }
