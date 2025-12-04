@@ -11,9 +11,27 @@ use common_game::components::resource::*;
 use common_game::components::rocket::Rocket;
 use common_game::protocols::messages::*;
 
+
+trait PlanetDefinition {
+    fn get_name() -> &'static str;
+    fn get_type() -> &'static PlanetType;
+}
+
+
 struct CargonautsPlanet {
     ai_is_active: bool
 }
+
+impl PlanetDefinition for CargonautsPlanet {
+    fn get_name() -> &'static str {
+        "Cargonauts Planet"
+    }
+
+    fn get_type() -> &'static PlanetType {
+        &PlanetType::C
+    }
+}
+
 
 impl Default for CargonautsPlanet {
     fn default() -> Self {
