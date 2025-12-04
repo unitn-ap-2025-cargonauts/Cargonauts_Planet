@@ -6,6 +6,7 @@
 //!
 //! Each handler is defined as a standalone function to keep the logic modular and clean.
 
+use std::fmt::{Debug, Display, Formatter};
 use common_game::components::planet::*;
 use common_game::components::resource::*;
 use common_game::components::rocket::Rocket;
@@ -13,21 +14,27 @@ use common_game::protocols::messages::*;
 
 
 trait PlanetDefinition {
-    fn get_name() -> &'static str;
-    fn get_type() -> &'static PlanetType;
+    fn get_name(&self) -> &'static str;
+    fn get_type(&self) -> &'static PlanetType;
 }
 
+#[derive(Debug)]
+enum PlanetAIBehavior {
+    Survival,
+    Normal
+}
 
 struct CargonautsPlanet {
-    ai_is_active: bool
+    ai_is_active: bool,
+    ai_mode: PlanetAIBehavior
 }
 
 impl PlanetDefinition for CargonautsPlanet {
-    fn get_name() -> &'static str {
+    fn get_name(&self) -> &'static str {
         "Cargonauts Planet"
     }
 
-    fn get_type() -> &'static PlanetType {
+    fn get_type(&self) -> &'static PlanetType {
         &PlanetType::C
     }
 }
@@ -36,8 +43,23 @@ impl PlanetDefinition for CargonautsPlanet {
 impl Default for CargonautsPlanet {
     fn default() -> Self {
         Self {
-            ai_is_active: true
+            ai_is_active: true,
+            ai_mode: PlanetAIBehavior::Survival
         }
+    }
+}
+
+
+impl Debug for CargonautsPlanet {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Planet name: {} {{ {:?}, {:?} }}", self.get_name() , self.ai_is_active, self.ai_mode )
+    }
+}
+
+
+impl Display for CargonautsPlanet {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Planet {}", self.get_name())
     }
 }
 
