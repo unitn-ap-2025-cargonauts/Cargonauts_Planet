@@ -6,16 +6,32 @@
 //!
 //! Each handler is defined as a standalone function to keep the logic modular and clean.
 
-use std::sync::mpsc;
 use common_game::components::planet::*;
 use common_game::components::resource::*;
 use common_game::components::rocket::Rocket;
 use common_game::protocols::messages::*;
-use std::time::SystemTime;
+
+
+trait PlanetDefinition {
+    fn get_name() -> &'static str;
+    fn get_type() -> &'static PlanetType;
+}
+
 
 struct CargonautsPlanet {
     ai_is_active: bool
 }
+
+impl PlanetDefinition for CargonautsPlanet {
+    fn get_name() -> &'static str {
+        "Cargonauts Planet"
+    }
+
+    fn get_type() -> &'static PlanetType {
+        &PlanetType::C
+    }
+}
+
 
 impl Default for CargonautsPlanet {
     fn default() -> Self {
@@ -517,7 +533,6 @@ mod tests {
     #[test]
     fn test_rocket_with_disabled_ai() {
 
-        use common_game::protocols::messages::StopPlanetAiMsg;
 
         let toy_struct = CargonautsPlanet::default();
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
@@ -530,12 +545,12 @@ mod tests {
         let mut planet = create_planet(
             (planet_to_orchestrato_sender, orchestrator_to_planet_receiver),
             (planet_to_explorer_sender, explorer_to_planet_receiver),
-            toy_struct
+            Box::from(toy_struct)
         );
 
 
         // Shutdown the planet AI
-        let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::StopPlanetAI( StopPlanetAiMsg ) );
+        let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::StopPlanetAI );
         let _ = planet_to_orchestrator_receiver.recv().unwrap();
 
         // Send the asteroid
