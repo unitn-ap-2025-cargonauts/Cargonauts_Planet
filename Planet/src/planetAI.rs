@@ -11,20 +11,18 @@ use common_game::components::planet::*;
 use common_game::components::resource::*;
 use common_game::components::rocket::Rocket;
 use common_game::protocols::messages::*;
-use std::time::SystemTime;
-use common_game::components::energy_cell::EnergyCell;
 use common_game::components::sunray::Sunray;
 
 struct CargonautsPlanet {
-    ai_is_active: bool,
-    external_energy_cells: Vec<Sunray>
+    ai_is_active: bool
 }
+
+
 
 impl Default for CargonautsPlanet {
     fn default() -> Self {
         Self {
-            ai_is_active: true,
-            external_energy_cells: Vec::new()
+            ai_is_active: true
         }
     }
 }
@@ -40,20 +38,8 @@ impl PlanetAI for CargonautsPlanet {
         match msg {
             // Charge single cell at vector (position 0 because the planet is of Type C
             OrchestratorToPlanet::Sunray(sunray) => {
-                /*let cell = state.cell_mut(0);
+                let cell = state.cell_mut(0);
                 cell.charge(sunray);
-
-                Some(PlanetToOrchestrator::SunrayAck {
-                    planet_id: state.id(),
-                })*/
-                // check if the cell is charged
-                let mut our_cell = state.cells_iter();
-                let at_lest_one_charged = our_cell.any(|energy_cell_iter| energy_cell_iter.is_charged());
-                if at_lest_one_charged {
-                    self.external_energy_cells.push(sunray);
-                } else {
-                    state.cell_mut(0).charge(sunray);
-                }
 
                 Some(PlanetToOrchestrator::SunrayAck {
                     planet_id: state.id(),
@@ -624,11 +610,16 @@ mod tests {
 
         // Start planet AI
         let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::StartPlanetAI );
-        let response = planet_to_orchestrator_receiver.recv();
+        //let response = planet_to_orchestrator_receiver.recv();
 
         // Send many sunrays
         for _ in 1..5 {
             let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::Sunray(Sunray::default()) );
+            let res = planet_to_orchestrator_receiver.recv().unwrap();
+            match res {
+                PlanetToOrchestrator::SunrayAck {planet_id : iid} => println!("{:?}", iid ),
+                _ => println!()
+            }
         }
 
         // Check the charging level
