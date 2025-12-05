@@ -58,6 +58,7 @@ impl PlanetAI for CargonautsPlanet {
                 Some(PlanetToOrchestrator::SunrayAck {
                     planet_id: state.id(),
                 })
+
             }
 
             // Use the method to be implemented later
@@ -134,7 +135,6 @@ impl PlanetAI for CargonautsPlanet {
                 //info!("AvailableEnergyCellRequest received from explorer[{}]", explorer_id);
                 handle_energy_cell_request(state)
             },
-            _ => panic!("Unexpected message")
         }
     }
 
@@ -182,12 +182,21 @@ impl PlanetAI for CargonautsPlanet {
         }
     }
 
+
+    /// This method will be invoked when a [OrchestratorToPlanet::StartPlanetAI]
+    /// is received, but **only if** the planet is currently in a *stopped* state.
+    ///
+    /// Start messages received when planet is already running are **ignored**.
     fn start(&mut self, state: &PlanetState) {
         self.ai_is_active = true;
     }
 
+
+    /// This method will be invoked when a [OrchestratorToPlanet::StopPlanetAI]
+    /// is received, but **only if** the planet is currently in a *running* state.
+    ///
     fn stop(&mut self, state: &PlanetState) {
-        self.ai_is_active = true;
+        self.ai_is_active = false;
     }
 }
 
@@ -385,38 +394,18 @@ fn handle_internal_state_request(
 
 #[cfg(test)]
 mod tests {
+
     use std::sync::mpsc;
+    use std::sync::mpsc::RecvTimeoutError;
     //use std::collections::HashSet;
     use std::thread;
+    use std::time::Duration;
     use common_game::components::asteroid::Asteroid;
     use common_game::components::sunray::Sunray;
     use common_game::components::resource::{BasicResourceType, ComplexResourceType};
     use common_game::components::planet::{Planet, PlanetAI, PlanetType};
     use common_game::protocols::messages::{ExplorerToPlanet, OrchestratorToPlanet, PlanetToExplorer, PlanetToOrchestrator};
     use crate::planetAI::CargonautsPlanet;
-
-    // Function that create a Planet with specific arguments
-    /*fn create_planet(
-        id: u32,
-        planet_type: PlanetType,
-        gen_rules: Vec<BasicResourceType>,
-        comb_rules: Vec<ComplexResourceType>
-    ) -> Planet<CargonautsPlanet> {
-        let (to_orchestrator_tx, _to_orchestrator_rx) = mpsc::channel(); // Planet -> Orchestrator
-        let (_from_orchestrator_tx, from_orchestrator_rx) = mpsc::channel(); // Orchestrator -> Planet
-        let (to_explorer_tx, _to_explorer_rx) = mpsc::channel(); // Planet -> Explorer
-        let (_from_explorer_tx, from_explorer_rx) = mpsc::channel(); // Explorer -> Planet
-
-        Planet::new(
-            id,
-            planet_type,
-            CargonautsPlanet::default(),
-            gen_rules,
-            comb_rules,
-            (from_orchestrator_rx, to_orchestrator_tx),
-            (from_explorer_rx, to_explorer_tx),
-        ).expect("Failed to create planet")
-    }*/
 
     fn planet_to_explorer_channel_creator() -> (mpsc::Sender<PlanetToExplorer>, mpsc::Receiver<PlanetToExplorer>) {
         let (planet_to_explorer_sender, planet_to_explorer_receiver): (mpsc::Sender<PlanetToExplorer>, mpsc::Receiver<PlanetToExplorer>) = mpsc::channel();
@@ -456,31 +445,33 @@ mod tests {
         planet.unwrap()
     }
 
+    /// Assert that when the cells is not charged (which means as soon as the planet is created)
+    /// the [Asteroid] destroys the [Planet].
     #[test]
     fn asteroid_with_uncharged_cell() {
+
+        // ----------------- Channels and planet cration
         let toy_struct = CargonautsPlanet::default();
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
-        let (planet_to_orchestrato_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_crator();
-
+        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_crator();
         let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
         let (planet_to_explorer_sender, _) = planet_to_explorer_channel_creator();
-
-
         let mut planet = create_planet(
-            (planet_to_orchestrato_sender, orchestrator_to_planet_receiver),
+            (planet_to_orchestrator_sender, orchestrator_to_planet_receiver),
             (planet_to_explorer_sender, explorer_to_planet_receiver),
             Box::from(toy_struct)
         );
 
-        // Spawn the thread:
-        let therad_var = thread::spawn(move || {
-            planet.run();
+        // ----------------- Spawn the thread:
+        let _ = thread::spawn(move || {
+            let _ = planet.run();
         });
 
-        // Make the planet start
+        // ----------------- Make the planet start
         let _ = orchestrator_to_planet_sender.send(OrchestratorToPlanet::StartPlanetAI);
 
-        // Send an asteroid
+
+        // ----------------- Send an asteroid
         let _ = orchestrator_to_planet_sender.send(OrchestratorToPlanet::Asteroid(Asteroid::default()));
         let planet_response = planet_to_orchestrator_receiver.recv().unwrap();
         assert!(matches!( planet_response, PlanetToOrchestrator::AsteroidAck { .. } ));
@@ -488,51 +479,54 @@ mod tests {
     }
 
 
+    /// Assert that when the cell is charged the [Asteroid] does not destroy the [Planet].
     #[test]
     fn test_asteroid_handler_with_charged_cell() {
         let toy_struct = CargonautsPlanet::default();
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
-        let (planet_to_orchestrato_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_crator();
+        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_crator();
 
         let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
         let (planet_to_explorer_sender, _) = planet_to_explorer_channel_creator();
 
 
         let mut planet = create_planet(
-            (planet_to_orchestrato_sender, orchestrator_to_planet_receiver),
+            (planet_to_orchestrator_sender, orchestrator_to_planet_receiver),
             (planet_to_explorer_sender, explorer_to_planet_receiver),
             Box::from(toy_struct)
         );
 
         // Spawn the thread:
-        let therad_var = thread::spawn(move || {
-            planet.run();
+        let _ = thread::spawn(move || {
+            let _ = planet.run();
         });
 
-        // Make the planet start
+        // Make the PlanetAI start
         let _ = orchestrator_to_planet_sender.send(OrchestratorToPlanet::StartPlanetAI);
 
 
         // Send sunrays
         let _ = orchestrator_to_planet_sender.send(OrchestratorToPlanet::Sunray(Sunray::default()));
         let sunrays_planet_response = planet_to_orchestrator_receiver.recv();
-        assert!(matches!( sunrays_planet_response.unwrap(), PlanetToOrchestrator::SunrayAck { .. } ), "Did not received a sunrays AKC");
+        assert!(matches!( sunrays_planet_response, Ok(PlanetToOrchestrator::SunrayAck { .. }) ), "Did not received a sunrays AKC");
+        assert!(matches!(sunrays_planet_response, Ok(PlanetToOrchestrator::SunrayAck { planet_id: 2})));
 
         // Send the asteroid
         let _ = orchestrator_to_planet_sender.send(OrchestratorToPlanet::Asteroid(Asteroid::default()));
         let planet_response = planet_to_orchestrator_receiver.recv();
         assert!(planet_response.is_ok(), "Error with the response of the planet once the Asteroid");
 
-        if let Ok(planet_response_msg) = planet_response {
-            assert!(matches!( planet_response_msg, PlanetToOrchestrator::AsteroidAck { planet_id: 2,  rocket: _ }), "Planet answered with a different ID");
-            assert!(matches!( planet_response_msg, PlanetToOrchestrator::AsteroidAck { planet_id: 2,  rocket: Some( _ ) }));
-            assert!(matches!(planet_response_msg, PlanetToOrchestrator::AsteroidAck { .. } ), "The planet did not answer back with a AsteroidAck");
-        }
+        let planet_response_msg = planet_response.unwrap();
+        assert!(matches!( planet_response_msg, PlanetToOrchestrator::AsteroidAck { planet_id: 2,  rocket: _ }), "Planet answered with a different ID");
+        assert!(matches!( planet_response_msg, PlanetToOrchestrator::AsteroidAck { planet_id: 2,  rocket: Some( _ ) }));
+        assert!(matches!(planet_response_msg, PlanetToOrchestrator::AsteroidAck { .. } ), "The planet did not answer back with a AsteroidAck");
+
     }
 
+
+    /// Send the rocket when the AI is not enabled
     #[test]
     fn test_rocket_with_disabled_ai() {
-
 
         let toy_struct = CargonautsPlanet::default();
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
@@ -548,17 +542,70 @@ mod tests {
             Box::from(toy_struct)
         );
 
+        let _ = thread::spawn(move|| {
+            planet.run()
+        });
 
-        // Shutdown the planet AI
+        // Start the AI (disabled by default)
+        let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::StartPlanetAI);
+        // NOTE: I should not do the recv since the start ack is not sent back
+
+
+        // Shutdown the planet AI. Note that I should not wait for the response
         let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::StopPlanetAI );
-        let _ = planet_to_orchestrator_receiver.recv().unwrap();
+        //let _ = planet_to_orchestrator_receiver.recv();
 
         // Send the asteroid
         let _ = orchestrator_to_planet_sender.send(OrchestratorToPlanet::Asteroid(Asteroid::default()));
-        let planet_response = planet_to_orchestrator_receiver.recv();
-        assert!(planet_response.is_ok(), "Error with the response of the planet once the Asteroid");
-        assert!( matches!(planet_response.unwrap(), PlanetToOrchestrator::AsteroidAck {planet_id: _, rocket: None}), "The AI should be stopped thus the planet should not be able to send with a rocket" );
+        let planet_response = planet_to_orchestrator_receiver.recv_timeout(Duration::from_millis(5000));
+        assert!(matches!( planet_response, Err(RecvTimeoutError::Timeout) ), "The orchestrator should time out because the planet's AI is disabled.")
+
     }
+
+
+    /// Testing the start and stop of the AI. TODO: I wrote to Andrea since the message was not in
+    ///  and he told me that he is fixing it rn.
+    #[test]
+    fn test_start_and_stop_planet_ai() {
+
+        let toy_struct = CargonautsPlanet::default();
+        let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
+        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_crator();
+
+        let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
+        let (planet_to_explorer_sender, _) = planet_to_explorer_channel_creator();
+
+
+        let mut planet = create_planet(
+            (planet_to_orchestrator_sender, orchestrator_to_planet_receiver),
+            (planet_to_explorer_sender, explorer_to_planet_receiver),
+            Box::from(toy_struct)
+        );
+
+
+        let _ = thread::spawn(move|| {
+            let _ = planet.run();
+        } );
+
+        // send start AI message
+        let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::StartPlanetAI );
+        let response = planet_to_orchestrator_receiver.recv_timeout(Duration::from_millis(5000));
+        assert!( matches!(response, Err(RecvTimeoutError::Timeout)) , "Expected a timeout error");
+
+
+        // send stop AI message
+        let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::StopPlanetAI );
+        let response = planet_to_orchestrator_receiver.recv_timeout(Duration::from_millis(5000));
+        assert!( matches!(response, Err(RecvTimeoutError::Timeout)) , "Expected a timeout error");
+
+        // Again, send startAI
+        let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::StartPlanetAI );
+        let response = planet_to_orchestrator_receiver.recv_timeout(Duration::from_millis(5000));
+        assert!(matches!(response, Err(RecvTimeoutError::Timeout)) , "Expected a timeout error")
+
+    }
+
+
 
     /*#[test]
     fn test_base_handle_supported_resource_request() {
