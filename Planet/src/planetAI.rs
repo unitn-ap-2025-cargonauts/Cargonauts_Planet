@@ -158,27 +158,33 @@ impl PlanetAI for CargonautsPlanet {
                 // Check if the energy cell should be charged
                 if !state.cell(0).is_charged() {
                     state.charge_cell(sunray);
-                }
+                    Some(PlanetToOrchestrator::SunrayAck {planet_id : state.id()})
+                } else {
+                    match self.ai_mode {
+                        PlanetAIBehavior::Survival => {
+                            // Surely at this point the energy cell is charged
+                            // TODO: an assumption here is that the planet does not have a Rocket
+                            //  otherwise it would not be there
+                            let _ = state.build_rocket( 0 );
 
-                match self.ai_mode {
-                    PlanetAIBehavior::Survival => {
-                        // Surely at this point the energy cell is charged
-                        // TODO: an assumption here is that the planet does not have a Rocket
-                        //  otherwise it would not be there
-                        let _ = state.build_rocket( 0 );
+                            // Switch to Normal mode
+                            self.switch_mode( PlanetAIBehavior::Normal );
 
-                        // Switch to Normal mode
-                        self.switch_mode( PlanetAIBehavior::Normal );
+                            state.charge_cell(sunray);
 
-                        Some(PlanetToOrchestrator::SunrayAck { planet_id: state.id() })
-                    },
-                    PlanetAIBehavior::Normal => {
-                        // todo!("Honest idk what to do with that. I think i should produce stuff but\
-                        // I am not sure i Can ")
-                        let generated_carbon = generator.make_carbon( state.cell_mut(0) );
-                        Some(PlanetToOrchestrator::SunrayAck {planet_id : state.id()})
+                            Some(PlanetToOrchestrator::SunrayAck { planet_id: state.id() })
+                        },
+                        PlanetAIBehavior::Normal => {
+                            // todo!("Honest idk what to do with that. I think i should produce stuff but\
+                            // I am not sure i Can ")
+                            let generated_carbon = generator.make_carbon( state.cell_mut(0) );
+                            state.charge_cell(sunray);
+                            Some(PlanetToOrchestrator::SunrayAck {planet_id : state.id()})
+                        }
                     }
                 }
+
+
             }
 
             // Use the method to be implemented later
