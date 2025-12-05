@@ -27,7 +27,7 @@ enum PlanetAIBehavior {
 struct CargonautsPlanet {
     ai_is_active: bool,
     ai_mode: PlanetAIBehavior,
-    cached_basic_resource: Vec<BasicResourceType>
+    cached_basic_resource: Option<ResourcesCache>
 }
 
 impl PlanetDefinition for CargonautsPlanet {
@@ -46,7 +46,7 @@ impl Default for CargonautsPlanet {
         Self {
             ai_is_active: true,
             ai_mode: PlanetAIBehavior::Survival,
-            cached_basic_resource : vec![]
+            cached_basic_resource : None
         }
     }
 }
@@ -68,19 +68,40 @@ impl Display for CargonautsPlanet {
 
 impl CargonautsPlanet {
 
-    //! Set the PlanetAI behavior as the one defined in the method argument
-    //!
-    //! # Parameters
-    //! - `new_mode : PlanetAIBehavior` the new state behavior that must be set
+    /// Set the PlanetAI behavior as the one defined in the method argument
+    ///
+    /// # Parameters
+    /// - `new_mode : PlanetAIBehavior` the new state behavior that must be set
+    ///
+    /// # Return
+    /// Nothing since it only changes the fields of the struct
     fn switch_mode(&mut self, new_mode: PlanetAIBehavior) {
         self.ai_mode = new_mode;
     }
 
 
+    /// Active the [ResourcesCache]. If it was already active, nothing is done.
+    fn active_cache_mode(&mut self) {
+        if self.cached_basic_resource.is_none() {
+            self.cached_basic_resource = Some(ResourcesCache::new())
+        }
+    }
+
+    /// Returns `true/false` based on whether the [ResourcesCache] is active or not.
+    fn is_cache_mode_active(&self) -> bool {
+        self.cached_basic_resource.is_some()
+    }
+
 }
 
+
+/// When a planet receives a `Sunray` that would otherwise be lost, it attempts to build resources
+/// and store them in a cache to speed up the process when another planet arrives and requests them.
+/// This operating mode is not necessary and can be activated when the planet is built.
 struct ResourcesCache {
+    /// Container for the BasicResources
     basic_cache: Vec<BasicResourceType>,
+    /// Container for the ComplexResources
     complex_cache: Vec<ComplexResourceType>
 }
 
@@ -88,6 +109,7 @@ struct ResourcesCache {
 impl ResourcesCache {
 
 
+    /// Creates and returns an instance of the object with default values.
     fn new() -> Self {
         Self {
             basic_cache: Vec::new(),
@@ -95,7 +117,11 @@ impl ResourcesCache {
         }
     }
 
-    fn add_in_cache(&mut self, new_resource: ResourceType) {
+    /// The passed resource is added to the correct vector
+    /// # Arguments
+    ///
+    /// * `new_resource: ResourceType` : the Resource that must be added
+    fn add(&mut self, new_resource: ResourceType) {
         match new_resource {
             ResourceType::Basic(basic_res) => {
                 self.basic_cache.push( basic_res )
@@ -106,6 +132,12 @@ impl ResourcesCache {
         }
     }
 
+    /// Given the generic resource it is added to the correct vector. If the resource is present in
+    /// the cache, it is returned and removed from the cache; otherwise, `None` is returned.
+    ///
+    /// # Arguments
+    ///
+    /// * `resource: ResourceType` : the Resource that must be removed
     fn get_resource(&mut self, resource: ResourceType) -> Option<ResourceType> {
 
         match resource {
@@ -131,10 +163,12 @@ impl ResourcesCache {
         }
     }
 
+    /// Return an immutable reference to the vector of basic resources
     fn get_basic_cache(&self) -> &Vec<BasicResourceType> {
         self.basic_cache.as_ref()
     }
 
+    /// Return an immutable reference to the vector of complex resources
     fn get_complex_cache(&self) -> &Vec<ComplexResourceType> {
         self.complex_cache.as_ref()
     }
@@ -183,8 +217,6 @@ impl PlanetAI for CargonautsPlanet {
                         }
                     }
                 }
-
-
             }
 
             // Use the method to be implemented later
