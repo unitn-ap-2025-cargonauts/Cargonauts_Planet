@@ -26,7 +26,8 @@ enum PlanetAIBehavior {
 
 struct CargonautsPlanet {
     ai_is_active: bool,
-    ai_mode: PlanetAIBehavior
+    ai_mode: PlanetAIBehavior,
+    cached_basic_resource: Vec<BasicResourceType>
 }
 
 impl PlanetDefinition for CargonautsPlanet {
@@ -44,7 +45,8 @@ impl Default for CargonautsPlanet {
     fn default() -> Self {
         Self {
             ai_is_active: true,
-            ai_mode: PlanetAIBehavior::Survival
+            ai_mode: PlanetAIBehavior::Survival,
+            cached_basic_resource : vec![]
         }
     }
 }
@@ -59,11 +61,89 @@ impl Debug for CargonautsPlanet {
 
 impl Display for CargonautsPlanet {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Planet {}", self.get_name())
+        write!(f, "Planet {}, type: {:?}", self.get_name(), self.get_type())
     }
 }
 
+
+impl CargonautsPlanet {
+
+    //! Set the PlanetAI behavior as the one defined in the method argument
+    //!
+    //! # Parameters
+    //! - `new_mode : PlanetAIBehavior` the new state behavior that must be set
+    fn switch_mode(&mut self, new_mode: PlanetAIBehavior) {
+        self.ai_mode = new_mode;
+    }
+
+
+}
+
+struct ResourcesCache {
+    basic_cache: Vec<BasicResourceType>,
+    complex_cache: Vec<ComplexResourceType>
+}
+
+
+impl ResourcesCache {
+
+
+    fn new() -> Self {
+        Self {
+            basic_cache: Vec::new(),
+            complex_cache: Vec::new()
+        }
+    }
+
+    fn add_in_cache(&mut self, new_resource: ResourceType) {
+        match new_resource {
+            ResourceType::Basic(basic_res) => {
+                self.basic_cache.push( basic_res )
+            },
+            ResourceType::Complex(complex_res) => {
+                self.complex_cache.push( complex_res )
+            }
+        }
+    }
+
+    fn get_resource(&mut self, resource: ResourceType) -> Option<ResourceType> {
+
+        match resource {
+            ResourceType::Basic(basic_res) => {
+
+                let basic_in = self.basic_cache.contains( &basic_res );
+                if basic_in {
+                    let position = self.basic_cache.iter().position(| x | x.eq(&basic_res));
+                    Some(ResourceType::Basic( self.basic_cache.remove(position.unwrap()) ))
+                } else {
+                    None
+                }
+            },
+            ResourceType::Complex(complex_res ) => {
+                let basic_in = self.complex_cache.contains( &complex_res );
+                if basic_in {
+                    let position = self.complex_cache.iter().position(| x | x.eq(&complex_res));
+                    Some(ResourceType::Complex( self.complex_cache.remove(position.unwrap()) ))
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    fn get_basic_cache(&self) -> &Vec<BasicResourceType> {
+        self.basic_cache.as_ref()
+    }
+
+    fn get_complex_cache(&self) -> &Vec<ComplexResourceType> {
+        self.complex_cache.as_ref()
+    }
+
+}
+
+
 impl PlanetAI for CargonautsPlanet {
+
     fn handle_orchestrator_msg(
         &mut self,
         state: &mut PlanetState,
@@ -74,21 +154,38 @@ impl PlanetAI for CargonautsPlanet {
         match msg {
             // Charge single cell at vector (position 0 because the planet is of Type C
             OrchestratorToPlanet::Sunray(sunray) => {
-                let cell = state.cell_mut(0);
-                cell.charge(sunray);
 
-                Some(PlanetToOrchestrator::SunrayAck {
-                    planet_id: state.id(),
-                })
+                // Check if the energy cell should be charged
+                if !state.cell(0).is_charged() {
+                    state.charge_cell(sunray);
+                }
+
+                match self.ai_mode {
+                    PlanetAIBehavior::Survival => {
+                        // Surely at this point the energy cell is charged
+                        // TODO: an assumption here is that the planet does not have a Rocket
+                        //  otherwise it would not be there
+                        let _ = state.build_rocket( 0 );
+
+                        // Switch to Normal mode
+                        self.switch_mode( PlanetAIBehavior::Normal );
+
+                        Some(PlanetToOrchestrator::SunrayAck { planet_id: state.id() })
+                    },
+                    PlanetAIBehavior::Normal => {
+                        // todo!("Honest idk what to do with that. I think i should produce stuff but\
+                        // I am not sure i Can ")
+                        let generated_carbon = generator.make_carbon( state.cell_mut(0) );
+                        Some(PlanetToOrchestrator::SunrayAck {planet_id : state.id()})
+                    }
+                }
             }
 
             // Use the method to be implemented later
             OrchestratorToPlanet::Asteroid(_) => {
-                let maybe_rocket = self.handle_asteroid(state, generator, combinator);
-
                 Some(PlanetToOrchestrator::AsteroidAck {
                     planet_id: state.id(),
-                    rocket: maybe_rocket,
+                    rocket: self.handle_asteroid(state, generator, combinator),
                 })
             }
 
@@ -161,7 +258,7 @@ impl PlanetAI for CargonautsPlanet {
     }
 
 
-    /// Handler for the [Asteroid] message, it returns `None` or `Some([Rocket])` based on the rules of the
+    /// Handler for the [Asteroid] message, it returns `None` or `Some(Rocket)` based on the rules of the
     /// [Planet] or the availability of [Rocket] on the planet. 
     ///
     /// More precisely, it returns `None` if:
@@ -169,9 +266,8 @@ impl PlanetAI for CargonautsPlanet {
     /// - The [Planet] can not crate any [Rocket] because it has no charged [EnergyCell].
     ///
     /// It returns `Some(Rocket)` if:
-    /// - The [Planet]'s rules allow it to do so and it already has a [Rocket] that can be used.
-    /// - The [Planet]'s rules allow it to do so and it was able to build a [Rocket] when [Asteroid]
-    /// message was delivered to it.
+    /// - There already is a [Rocket] that can be used.
+    /// - The planet is able to build a [Rocket]
     fn handle_asteroid(
         &mut self,
         state: &mut PlanetState,
@@ -179,7 +275,10 @@ impl PlanetAI for CargonautsPlanet {
         _: &Combinator
     ) -> Option<Rocket> {
 
-        if !self.ai_is_active || !state.can_have_rocket(){
+        // Drop the hanlder if the AI is not active
+        // TODO: technically if AI is disable I should not be able to reach this since the
+        //  function (right now) is built in a way that i can not arrive there in case of disabled AI
+        if !self.ai_is_active {
             return None;
         }
 
@@ -187,6 +286,14 @@ impl PlanetAI for CargonautsPlanet {
         // is a rocket ready to be used
         if state.has_rocket() {
             let rocket = state.take_rocket().unwrap();
+
+            // Switch to survival mode
+            self.switch_mode( PlanetAIBehavior::Survival );
+
+            // Send a warn to the explorer
+            // TODO : this is not possible since I cannot directly talk to the explorer from there
+
+            // Finally, return the rocket
             Some(rocket)
         } else {
             // The rocket is not available, check if it still can be created with the use of an
@@ -195,11 +302,19 @@ impl PlanetAI for CargonautsPlanet {
             if let Some(charged_cell_position_result) = charged_cell_position {
                 // Create the rocket and return it
                 let created_rocket_result = state.build_rocket( charged_cell_position_result );
-                if let Ok(non_err_msg) = created_rocket_result {
-                    return state.take_rocket();
+                return if let Ok(_) = created_rocket_result {
+                    // Switch mode and return the rocket
+                    self.switch_mode(PlanetAIBehavior::Survival);
+                    state.take_rocket()
+                } else {
+                    // q1 on obsidian: the error can happen either because of it does not have
+                    // any free cell or it already has a rocket which should not be happen since
+                    // I have already checked this before
+                    None
                 }
             }
-            // Rocket can not be built
+            // Rocket can not be built but this should not be possible
+            // TODO: log the logical error
             None
         }
     }
@@ -495,8 +610,8 @@ mod tests {
         );
 
         // Spawn the thread:
-        let therad_var = thread::spawn(move || {
-            planet.run();
+        let _ = thread::spawn(move || {
+            let _ = planet.run();
         });
 
         // Make the planet start
@@ -528,7 +643,7 @@ mod tests {
 
         // Spawn the thread:
         let therad_var = thread::spawn(move || {
-            planet.run();
+            let _ = planet.run();
         });
 
         // Make the planet start
