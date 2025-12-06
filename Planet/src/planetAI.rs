@@ -6,12 +6,17 @@
 //!
 //! Each handler is defined as a standalone function to keep the logic modular and clean.
 
+use std::collections::VecDeque;
 use std::fmt::{Debug, Display, Formatter};
+use std::os::linux::raw::stat;
 use common_game::components::planet::*;
 use common_game::components::resource::*;
+use common_game::components::resource::BasicResourceType::Carbon;
+use common_game::components::resource::ComplexResourceType::Diamond;
+use common_game::components::resource::ResourceType::Complex;
 use common_game::components::rocket::Rocket;
 use common_game::protocols::messages::*;
-
+use log::info;
 
 trait PlanetDefinition {
     fn get_name(&self) -> &'static str;
@@ -83,7 +88,7 @@ impl CargonautsPlanet {
     /// Active the [ResourcesCache]. If it was already active, nothing is done.
     fn active_cache_mode(&mut self) {
         if self.cached_basic_resource.is_none() {
-            self.cached_basic_resource = Some(ResourcesCache::new())
+            self.cached_basic_resource = Some(ResourcesCache::new(10))
         }
     }
 
@@ -100,78 +105,222 @@ impl CargonautsPlanet {
 /// This operating mode is not necessary and can be activated when the planet is built.
 struct ResourcesCache {
     /// Container for the BasicResources
-    basic_cache: Vec<BasicResourceType>,
+    basic_cache: Vec<BasicResource>,
     /// Container for the ComplexResources
-    complex_cache: Vec<ComplexResourceType>
+    complex_cache: Vec<ComplexResource>,
+    /// Container for the latest requests made by an [Explorer]
+    latest_requests_container : VecDeque<ResourceType>,
+    /// Number defining how many records of `latest_requests_container` to consider
+    cache_number_ok_value_to_be_considered: u8,
+    /// Cache size
+    cache_size: usize
 }
 
+/// [ResourcesCache] realted errors
+enum ResourceCacheErrors {
+    /// Number of values that must be considered to predict the next value is **greater** than the
+    /// size of the cache
+    RequiredExceedsCache,
+    /// Number of **values that must be considered** to predict the next value is lower or equal than 0
+    InvalidConsiderationValues,
+    /// The cache still does not have enough element to make the prediction
+    InsufficientRecords,
+    /// When the new size of the cache is <= 0
+    InvalidNewCacheSize
+}
 
 impl ResourcesCache {
 
 
     /// Creates and returns an instance of the object with default values.
-    fn new() -> Self {
+    fn new(latest_request_consideration: u8) -> Self {
         Self {
             basic_cache: Vec::new(),
-            complex_cache: Vec::new()
+            complex_cache: Vec::new(),
+            latest_requests_container: VecDeque::new(),
+            cache_number_ok_value_to_be_considered: latest_request_consideration,
+            cache_size: 10
         }
     }
 
-    /// The passed resource is added to the correct vector
+
+    /// Check if I can create `Diamond`
+    fn check_diamond_creation(&self) -> bool {
+        self.basic_cache.iter().filter(|&stored_resource| stored_resource.eq( &BasicResourceType::Carbon )).count() >= 2
+    }
+
+    /// The passed resource is added to the basic resources vector.
     /// # Arguments
     ///
-    /// * `new_resource: ResourceType` : the Resource that must be added
-    fn add(&mut self, new_resource: ResourceType) {
-        match new_resource {
-            ResourceType::Basic(basic_res) => {
-                self.basic_cache.push( basic_res )
-            },
-            ResourceType::Complex(complex_res) => {
-                self.complex_cache.push( complex_res )
-            }
+    /// * `basic_res: BasicResource` : the Resource that must be added with the actual resource inside
+    /// the enum
+    fn add_basic(&mut self, basic_res: BasicResource) {
+        self.basic_cache.push(basic_res)
+    }
+
+    /// The passed resource is added to the complex resources vector.
+    /// # Arguments
+    ///
+    /// * `complex_res: ComplexResource` : the Resource that must be added with the actual resource inside
+    /// the enum
+    fn add_complex_resource(&mut self, complex_res: ComplexResource) {
+        self.complex_cache.push(complex_res)
+    }
+
+    /// Given a basic resource, the first instance of it is removed from the vector. If the resource
+    /// is not inside the vector than it is not removed and the method returns `None`
+    ///
+    /// # Arguments
+    ///
+    /// * `basic_resource: BasicResourceType` : the Resource that must be removed
+    fn extract_basic_resource(&mut self, basic_resource: BasicResourceType) -> Option<BasicResource> {
+
+        let mut basic_in = false;
+        for basic_res in self.basic_cache.iter() {
+
+                if basic_res.
+
+        }
+
+        if basic_in {
+            let position = self.basic_cache.iter().position(| x | x.eq(&basic_resource));
+            Some(   self.basic_cache.remove(position.unwrap()) )
+        } else {
+            None
         }
     }
 
-    /// Given the generic resource it is added to the correct vector. If the resource is present in
-    /// the cache, it is returned and removed from the cache; otherwise, `None` is returned.
+    /// Given a complex resource the first instance of it it is removed from the vector. If the resource
+    /// is not inside the vecotr than it is removed
     ///
     /// # Arguments
     ///
-    /// * `resource: ResourceType` : the Resource that must be removed
-    fn get_resource(&mut self, resource: ResourceType) -> Option<ResourceType> {
+    /// * `complex_resource: ComplexResourceType` : the Resource that must be removed
+    fn extract_complex_resource(&mut self, complex_resource: ComplexResourceType) -> Option<ComplexResourceType> {
+        /*let basic_in = self.complex_cache.contains( &complex_resource );
+        if basic_in {
+            let position = self.complex_cache.iter().position(| x | x.eq(&complex_resource));
+            Some( self.complex_cache.remove(position.unwrap()) )
+        } else {
+            None
+        }*/
+        let mut complex_in = false;
+        for complex in self.complex_cache {
 
-        match resource {
-            ResourceType::Basic(basic_res) => {
-
-                let basic_in = self.basic_cache.contains( &basic_res );
-                if basic_in {
-                    let position = self.basic_cache.iter().position(| x | x.eq(&basic_res));
-                    Some(ResourceType::Basic( self.basic_cache.remove(position.unwrap()) ))
-                } else {
-                    None
-                }
-            },
-            ResourceType::Complex(complex_res ) => {
-                let basic_in = self.complex_cache.contains( &complex_res );
-                if basic_in {
-                    let position = self.complex_cache.iter().position(| x | x.eq(&complex_res));
-                    Some(ResourceType::Complex( self.complex_cache.remove(position.unwrap()) ))
-                } else {
-                    None
-                }
-            }
+        }
+        if complex_in {
+            let position = self.basic_cache.iter().position(| x | x.eq(&basic_resource));
+            Some(   self.basic_cache.remove(position.unwrap()) )
+        } else {
+            None
         }
     }
 
     /// Return an immutable reference to the vector of basic resources
-    fn get_basic_cache(&self) -> &Vec<BasicResourceType> {
+    fn get_basic_cache(&self) -> &Vec<BasicResource> {
         self.basic_cache.as_ref()
     }
 
     /// Return an immutable reference to the vector of complex resources
-    fn get_complex_cache(&self) -> &Vec<ComplexResourceType> {
+    fn get_complex_cache(&self) -> &Vec<ComplexResource> {
         self.complex_cache.as_ref()
     }
+
+
+    /// Change the cache size. It returns a [ResourceCacheErrors::InvalidNewCacheSize] if the size is
+    /// lower or equal than 0
+    fn change_cache_size(&mut self, new_cache_size: usize) -> Result<(), ResourceCacheErrors>{
+
+        if new_cache_size > 0 {
+            self.cache_size = new_cache_size;
+            Ok(())
+        } else {
+            Err(ResourceCacheErrors::InvalidNewCacheSize)
+        }
+
+    }
+
+    /// Change the value that must be considered in the cache.
+    fn change_value_to_be_considered(&mut self, new_value_to_be_considered: u8) -> Result<(), ResourceCacheErrors> {
+
+        if self.cache_size < new_value_to_be_considered as usize{
+            return Err( ResourceCacheErrors::RequiredExceedsCache )
+        } else {
+            self.cache_number_ok_value_to_be_considered = new_value_to_be_considered;
+            Ok(())
+        }
+    }
+
+    /// Insert a request. The cache is **FIFO**: the first element inserted is the
+    /// first removed when the cache is full. For instance, if we have a max size
+    /// of `3` and we insert (in that order) `A,B,C` then we insert `D` the `A` will
+    /// be removed from the cache. TODO: which errors can happens ??????
+    fn insert_requested_resource(&mut self, request: ResourceType) {
+        // Check if I need to pop before the insert
+        if self.latest_requests_container.len() == self.cache_size {
+            // Need to pop before push
+            let _ = self.latest_requests_container.pop_front();
+        }
+        // Now I can push_front
+        self.latest_requests_container.push_front( request )
+    }
+
+    /// Extract the latest `change_value_to_be_considered` to be considered and return a vector
+    /// of immutable reference to that values. If the values of size of the cache is lower than
+    /// `change_value_to_be_considered` it returns an error of [ResourceCacheErrors::InsufficientRecords]
+    fn extract_the_latest_request(&self) -> Result<Vec<&ResourceType>, ResourceCacheErrors > {
+        if self.latest_requests_container.len() < self.cache_number_ok_value_to_be_considered as usize{
+            Err(ResourceCacheErrors::InsufficientRecords)
+        } else {
+            // Extract and return everything
+            let mut latest_resource_container = Vec::new();
+            for val in 0..self.cache_number_ok_value_to_be_considered {
+
+                latest_resource_container.push(&self.latest_requests_container[val as usize]);
+            }
+            Ok(latest_resource_container)
+        }
+    }
+
+    /// Predict the next value to store it in the cache container. The predicted value is then stored
+    /// in the cache container (which has a finite size). Note that due to the restriction of the
+    /// project specification the choice is only between `Carbon` and `Diamond`. **Note** that this
+    /// function only predict the possibility, actually **it does note creates the predicted element!**
+    // TODO: what if the predicted value is `Carbon` but there is not enough ? ? ? ? ? ? ? ? ? ?
+    fn predict_next_resource_request(&self) -> Result<ResourceType, ResourceCacheErrors> {
+
+        let value_to_be_considered = self.cache_number_ok_value_to_be_considered;
+        let latest_values = self.extract_the_latest_request()?;
+        let fn_calculated_weight = |position_index: usize| -> u32 { (value_to_be_considered as u32) - (position_index as u32) + 1 };
+
+        let mut  carbon_counter = 0;
+        let mut diamond_counter = 0;
+
+        // Itererate throught the latest request :
+        for (index, requested_value) in latest_values.iter().enumerate() {
+
+            // Calculate the position weight
+            let calculated_weight = fn_calculated_weight(index);
+
+            match requested_value {
+                ResourceType::Basic( _ ) => {
+                    carbon_counter += calculated_weight
+                },
+                ResourceType::Complex(_) => {
+                    diamond_counter += calculated_weight
+                }
+            }
+        }
+
+        if (carbon_counter > diamond_counter) {
+            // Crate the Carbon
+            Ok(ResourceType::Basic(Carbon))
+        } else {
+            // Predicted Diamon
+            Ok(ResourceType::Basic(Carbon))
+        }
+    }
+
 
 }
 
@@ -209,8 +358,58 @@ impl PlanetAI for CargonautsPlanet {
                             Some(PlanetToOrchestrator::SunrayAck { planet_id: state.id() })
                         },
                         PlanetAIBehavior::Normal => {
-                            // todo!("Honest idk what to do with that. I think i should produce stuff but\
-                            // I am not sure i Can ")
+                            // Check if the ResourceCache is active:
+                            if let Some( resourceCache ) = self.cached_basic_resource.as_mut() {
+
+                                // Get the next element
+                                let next_predicted_element = resourceCache.predict_next_resource_request();
+
+                                // Check if I can or can't do that
+                                if let Ok(next_predicted_element_res) = next_predicted_element {
+
+                                    // Check which one was the result
+                                    match next_predicted_element_res {
+                                        ResourceType::Basic(_) => {
+                                            // Go for carbon
+                                            let carbon_generation = generator.make_carbon( state.cell_mut(0 ) );
+
+                                            // Check the creation result
+                                            if let Ok(carbon_generation_result) = carbon_generation {
+                                                // TODO: log the successfully build
+                                                // Insert the new carbon in the cache
+                                                resourceCache.add( ResourceType::Basic( BasicResourceType::Carbon ) );
+                                                
+                                            } else {
+                                                // TODO: log the failure
+                                            }
+
+                                        },
+                                        ResourceType::Complex(_) => {
+                                            // Go for Diamond.
+
+                                            // 1. Check if the cache actually has it
+                                            if resourceCache.check_diamond_creation() {
+                                                // Remove two Carbon from the cache
+                                                let carbon_one = resourceCache.extract_basic_resource( BasicResourceType::Carbon ).unwrap();
+                                                let carbon_two = resourceCache.extract_basic_resource( BasicResourceType::Carbon ).unwrap();
+
+                                                match carbon_one {
+                                                    ResourceType::Basic( basic ) => { combinator.make_diamond( basic, basic, state.cell_mut(0) )},
+                                                    ResourceType::Complex( complex) => {todo!()}
+                                                }
+
+                                            }
+
+                                        }
+                                    }
+
+                                }
+
+                            } else {
+                                // Nothing to do here
+                            }
+
+
                             let generated_carbon = generator.make_carbon( state.cell_mut(0) );
                             state.charge_cell(sunray);
                             Some(PlanetToOrchestrator::SunrayAck {planet_id : state.id()})
