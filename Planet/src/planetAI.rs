@@ -908,4 +908,53 @@ mod tests {
             panic!("Expected SupportedCombinationResponse variant");
         }
     }
+
+    #[test]
+    fn test_internal_state_request() {
+        let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
+        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
+        let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
+
+        let test_planet_id = 10;
+
+        let mut planet = create_planet(
+            orchestrator_to_planet_receiver,
+            planet_to_orchestrator_sender,
+            explorer_to_planet_receiver,
+            test_planet_id,
+        );
+
+        let planet_thread = thread::spawn(move || {
+            let _ = planet.run();
+        });
+
+        orchestrator_to_planet_sender
+            .send(OrchestratorToPlanet::StartPlanetAI)
+            .expect("Failed to send StartPlanetAI");
+
+        let _ = planet_to_orchestrator_receiver.recv();
+
+        orchestrator_to_planet_sender
+            .send(OrchestratorToPlanet::InternalStateRequest)
+            .expect("Failed to send InternalStateRequest");
+
+        let response = planet_to_orchestrator_receiver.recv();
+
+        match response {
+            Ok(PlanetToOrchestrator::InternalStateResponse { planet_id, planet_state }) => {
+                assert_eq!(planet_id, test_planet_id, "Returned planet ID does not match");
+
+
+                assert_eq!(planet_state.energy_cells.len(), 1, "Planet C should have 1 energy cell");
+            },
+            Ok(_) => panic!("Received unexpected message type"),
+            Err(e) => panic!("Failed to receive response: {:?}", e),
+        }
+
+        orchestrator_to_planet_sender
+            .send(OrchestratorToPlanet::KillPlanet)
+            .expect("Failed to send KillPlanet");
+
+        let _ = planet_thread.join();
+    }
 }
