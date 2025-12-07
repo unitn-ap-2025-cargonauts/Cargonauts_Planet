@@ -11,6 +11,7 @@ use common_game::components::resource::*;
 use common_game::components::rocket::Rocket;
 use common_game::protocols::messages::*;
 
+use paste::paste;
 
 trait PlanetDefinition {
     fn get_name() -> &'static str;
@@ -289,6 +290,23 @@ fn handle_generate_resource_request(
     Some(PlanetToExplorer::GenerateResourceResponse { resource })
 }
 
+macro_rules! generate_complex_resource {
+    ($combinator:expr, $cell:expr, $msg:expr, { $( $complex_resource:ident ( $r1:ident, $r2:ident ) ),* $(,)? }) => {{
+        paste! {
+            match $msg {
+                $(
+                    ComplexResourceRequest::$complex_resource($r1, $r2) => {
+                        $combinator
+                            .[<make_ $complex_resource:lower>]($r1, $r2, $cell)
+                            .map(ComplexResource::$complex_resource)
+                            .map_err(|(msg, r1, r2)| (msg, r1.to_generic(), r2.to_generic()))
+                    }
+                )*
+            }
+        }
+    }};
+}
+
 /// This handler processes a request to combine two basic or complex resources
 /// into a new complex resource using the planet's combinator, if energy is available.
 /// It returns a [CombineResourceResponse] message containing the newly
@@ -321,26 +339,61 @@ fn handle_combine_resource_request(
     combinator: &Combinator,
     msg: ComplexResourceRequest,
 ) -> Option<PlanetToExplorer> {
-    let mut complex_response: Option<ComplexResource> = None;
     let energy_cell = state.cell_mut(0);
-    if energy_cell.is_charged(){
-        match msg {
-            ComplexResourceRequest::Diamond(carbon1, carbon2) => {
-                match combinator.make_diamond(carbon1, carbon2, energy_cell){
-                    Ok( r) => complex_response = Some(ComplexResource::Diamond(r)),
-                    Err(e) => panic!("{:?}", e) //TODO right?
-                }
-            },
-            ComplexResourceRequest::Life(water, carbon) => {
-                match combinator.make_life(water, carbon, energy_cell){
-                    Ok( r) => complex_response = Some(ComplexResource::Life(r)),
-                    Err(e) => panic!("{:?}", e) //TODO right?
-                }
-            },
-            _ => panic!("Unexpected resource type") //TODO right?
-        }
+
+    if !energy_cell.is_charged() {
+        return None;
     }
-    Some(PlanetToExplorer::CombineResourceResponse { complex_response })
+
+    /*let complex_response = match msg {
+        ComplexResourceRequest::Diamond(c1, c2) => {
+            combinator
+                .make_diamond(c1, c2, energy_cell)
+                .map(ComplexResource::Diamond)
+                .map_err(|(msg, r1, r2)| (msg, r1.to_generic(), r2.to_generic()))
+        }
+        ComplexResourceRequest::Life(w, c) => {
+            combinator
+                .make_life(w, c, energy_cell)
+                .map(ComplexResource::Life)
+                .map_err(|(msg, r1, r2)| (msg, r1.to_generic(), r2.to_generic()))
+        }
+        ComplexResourceRequest::Water(h, o) => {
+            combinator
+                .make_water(h, o, energy_cell)
+                .map(ComplexResource::Water)
+                .map_err(|(msg, r1, r2)| (msg, r1.to_generic(), r2.to_generic()))
+        }
+        ComplexResourceRequest::Robot(s, l) => {
+            combinator
+                .make_robot(s, l, energy_cell)
+                .map(ComplexResource::Robot)
+                .map_err(|(msg, r1, r2)| (msg, r1.to_generic(), r2.to_generic()))
+        }
+        ComplexResourceRequest::Dolphin(w, l) => {
+            combinator
+                .make_dolphin(w, l, energy_cell)
+                .map(ComplexResource::Dolphin)
+                .map_err(|(msg, r1, r2)| (msg, r1.to_generic(), r2.to_generic()))
+        }
+        ComplexResourceRequest::AIPartner(r, d) => {
+            combinator
+                .make_aipartner(r, d, energy_cell)
+                .map(ComplexResource::AIPartner)
+                .map_err(|(msg, r1, r2)| (msg, r1.to_generic(), r2.to_generic()))
+        }
+    };*/
+
+    let complex_response = generate_complex_resource!(combinator, energy_cell, msg, {
+        Diamond(c1, c2),
+        Life(w, c),
+        Water(h, o),
+        Robot(s, l),
+        Dolphin(w, l),
+        AIPartner(r, d),
+    });
+
+    Some(PlanetToExplorer::CombineResourceResponse {complex_response})
 }
 
 /// This handler returns an [AvailableEnergyCellResponse] message containing
