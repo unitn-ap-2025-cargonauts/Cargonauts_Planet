@@ -395,9 +395,9 @@ fn handle_internal_state_request(
 #[cfg(test)]
 mod tests {
 
-    use std::sync::mpsc;
-    use std::sync::mpsc::RecvTimeoutError;
-    //use std::collections::HashSet;
+    /*use std::sync::mpsc;
+    use std::sync::mpsc::RecvTimeoutError;*/
+    use crossbeam_channel::unbounded;
     use std::thread;
     use std::time::Duration;
     use common_game::components::asteroid::Asteroid;
@@ -407,29 +407,29 @@ mod tests {
     use common_game::protocols::messages::{ExplorerToPlanet, OrchestratorToPlanet, PlanetToExplorer, PlanetToOrchestrator};
     use crate::planetAI::CargonautsPlanet;
 
-    fn planet_to_explorer_channel_creator() -> (mpsc::Sender<PlanetToExplorer>, mpsc::Receiver<PlanetToExplorer>) {
-        let (planet_to_explorer_sender, planet_to_explorer_receiver): (mpsc::Sender<PlanetToExplorer>, mpsc::Receiver<PlanetToExplorer>) = mpsc::channel();
+    fn planet_to_explorer_channel_creator() -> (crossbeam_channel::Sender<PlanetToExplorer>, crossbeam_channel::Receiver<PlanetToExplorer>) {
+        let (planet_to_explorer_sender, planet_to_explorer_receiver): (crossbeam_channel::Sender<PlanetToExplorer>, crossbeam_channel::Receiver<PlanetToExplorer>) = crossbeam_channel::unbounded();
         (planet_to_explorer_sender, planet_to_explorer_receiver)
     }
 
-    fn explorer_to_planet_channels_creator() -> (mpsc::Sender<ExplorerToPlanet>, mpsc::Receiver<ExplorerToPlanet>) {
-        let (explorer_to_planet_sender, explorer_to_planet_receiver): (mpsc::Sender<ExplorerToPlanet>, mpsc::Receiver<ExplorerToPlanet>) = mpsc::channel();
+    fn explorer_to_planet_channels_creator() -> (crossbeam_channel::Sender<ExplorerToPlanet>, crossbeam_channel::Receiver<ExplorerToPlanet>) {
+        let (explorer_to_planet_sender, explorer_to_planet_receiver): (crossbeam_channel::Sender<ExplorerToPlanet>, crossbeam_channel::Receiver<ExplorerToPlanet>) = crossbeam_channel::unbounded();
         (explorer_to_planet_sender, explorer_to_planet_receiver)
     }
 
-    fn orchestrator_to_planet_channels_creator() -> (mpsc::Sender<OrchestratorToPlanet>, mpsc::Receiver<OrchestratorToPlanet>) {
-        let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver): (mpsc::Sender<OrchestratorToPlanet>, mpsc::Receiver<OrchestratorToPlanet>) = mpsc::channel();
+    fn orchestrator_to_planet_channels_creator() -> (crossbeam_channel::Sender<OrchestratorToPlanet>, crossbeam_channel::Receiver<OrchestratorToPlanet>) {
+        let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver): (crossbeam_channel::Sender<OrchestratorToPlanet>, crossbeam_channel::Receiver<OrchestratorToPlanet>) = crossbeam_channel::unbounded();
         (orchestrator_to_planet_sender, orchestrator_to_planet_receiver)
     }
 
-    fn planet_to_orchestrator_channels_crator() -> (mpsc::Sender<PlanetToOrchestrator>, mpsc::Receiver<PlanetToOrchestrator>) {
-        let (planet_to_orchestrato_sender, planet_to_orchestrator_receiver): (mpsc::Sender<PlanetToOrchestrator>, mpsc::Receiver<PlanetToOrchestrator>) = mpsc::channel();
+    fn planet_to_orchestrator_channels_creator() -> (crossbeam_channel::Sender<PlanetToOrchestrator>, crossbeam_channel::Receiver<PlanetToOrchestrator>) {
+        let (planet_to_orchestrato_sender, planet_to_orchestrator_receiver): (crossbeam_channel::Sender<PlanetToOrchestrator>, crossbeam_channel::Receiver<PlanetToOrchestrator>) = crossbeam_channel::unbounded();
         (planet_to_orchestrato_sender, planet_to_orchestrator_receiver)
     }
 
     fn create_planet(
-        (planet_to_orchestrator_sender, orchestrator_to_planet_receiver): (mpsc::Sender<PlanetToOrchestrator>, mpsc::Receiver<OrchestratorToPlanet>),
-        (planet_to_explorer_sender, explorer_to_planet_receiver): (mpsc::Sender<PlanetToExplorer>, mpsc::Receiver<ExplorerToPlanet>),
+        (planet_to_orchestrator_sender, orchestrator_to_planet_receiver): (crossbeam_channel::Sender<PlanetToOrchestrator>, crossbeam_channel::Receiver<OrchestratorToPlanet>),
+        (planet_to_explorer_sender, explorer_to_planet_receiver): (crossbeam_channel::Sender<PlanetToExplorer>, crossbeam_channel::Receiver<ExplorerToPlanet>),
         ai: Box<dyn PlanetAI>
     ) -> Planet {
         let planet = Planet::new(
@@ -439,7 +439,7 @@ mod tests {
             vec![BasicResourceType::Silicon],
             vec![ComplexResourceType::Diamond, ComplexResourceType::AIPartner],
             (orchestrator_to_planet_receiver, planet_to_orchestrator_sender),
-            (explorer_to_planet_receiver, planet_to_explorer_sender)
+            explorer_to_planet_receiver
         );
         assert!(planet.is_ok(), "Planet creatrion error!");
         planet.unwrap()
@@ -453,7 +453,7 @@ mod tests {
         // ----------------- Channels and planet cration
         let toy_struct = CargonautsPlanet::default();
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
-        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_crator();
+        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
         let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
         let (planet_to_explorer_sender, _) = planet_to_explorer_channel_creator();
         let mut planet = create_planet(
@@ -484,7 +484,7 @@ mod tests {
     fn test_asteroid_handler_with_charged_cell() {
         let toy_struct = CargonautsPlanet::default();
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
-        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_crator();
+        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
 
         let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
         let (planet_to_explorer_sender, _) = planet_to_explorer_channel_creator();
@@ -530,7 +530,7 @@ mod tests {
 
         let toy_struct = CargonautsPlanet::default();
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
-        let (planet_to_orchestrato_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_crator();
+        let (planet_to_orchestrato_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
 
         let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
         let (planet_to_explorer_sender, _) = planet_to_explorer_channel_creator();
@@ -548,29 +548,30 @@ mod tests {
 
         // Start the AI (disabled by default)
         let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::StartPlanetAI);
-        // NOTE: I should not do the recv since the start ack is not sent back
+        let _ = planet_to_orchestrator_receiver.recv();
+
 
 
         // Shutdown the planet AI. Note that I should not wait for the response
         let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::StopPlanetAI );
-        //let _ = planet_to_orchestrator_receiver.recv();
+        let ai_shutdown_response = planet_to_orchestrator_receiver.recv();
+        assert!(matches!(ai_shutdown_response, Ok(PlanetToOrchestrator::StopPlanetAIResult { .. })));
 
         // Send the asteroid
         let _ = orchestrator_to_planet_sender.send(OrchestratorToPlanet::Asteroid(Asteroid::default()));
-        let planet_response = planet_to_orchestrator_receiver.recv_timeout(Duration::from_millis(5000));
-        assert!(matches!( planet_response, Err(RecvTimeoutError::Timeout) ), "The orchestrator should time out because the planet's AI is disabled.")
+        let planet_response = planet_to_orchestrator_receiver.recv();
+        assert!(matches!(planet_response, Ok(PlanetToOrchestrator::Stopped {..})));
 
     }
 
 
-    /// Testing the start and stop of the AI. TODO: I wrote to Andrea since the message was not in
-    ///  and he told me that he is fixing it rn.
+    /// Testing the start and stop of the AI.
     #[test]
     fn test_start_and_stop_planet_ai() {
 
         let toy_struct = CargonautsPlanet::default();
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
-        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_crator();
+        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
 
         let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
         let (planet_to_explorer_sender, _) = planet_to_explorer_channel_creator();
@@ -587,21 +588,24 @@ mod tests {
             let _ = planet.run();
         } );
 
-        // send start AI message
+        // Send start AI message
         let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::StartPlanetAI );
-        let response = planet_to_orchestrator_receiver.recv_timeout(Duration::from_millis(5000));
-        assert!( matches!(response, Err(RecvTimeoutError::Timeout)) , "Expected a timeout error");
+        let response = planet_to_orchestrator_receiver.recv();
+        assert!( matches!(response, Ok(PlanetToOrchestrator::StartPlanetAIResult { .. })) , "Expected a StartPlanetAIResult!");
+        assert!( matches!(response, Ok(PlanetToOrchestrator::StartPlanetAIResult { planet_id: 2 })) , "Expected a StartPlanetAIResult with id = 2!");
 
 
-        // send stop AI message
+        // Send stop AI message
         let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::StopPlanetAI );
-        let response = planet_to_orchestrator_receiver.recv_timeout(Duration::from_millis(5000));
-        assert!( matches!(response, Err(RecvTimeoutError::Timeout)) , "Expected a timeout error");
+        let response = planet_to_orchestrator_receiver.recv();
+        assert!( matches!(response, Ok(PlanetToOrchestrator::StopPlanetAIResult { .. })) , "Expected a StopPlanetAIResult");
+        assert!( matches!(response, Ok(PlanetToOrchestrator::StopPlanetAIResult { planet_id: 2 })), "Expected a StopPlanetAIResult with id = 2");
 
         // Again, send startAI
         let _ = orchestrator_to_planet_sender.send( OrchestratorToPlanet::StartPlanetAI );
-        let response = planet_to_orchestrator_receiver.recv_timeout(Duration::from_millis(5000));
-        assert!(matches!(response, Err(RecvTimeoutError::Timeout)) , "Expected a timeout error")
+        let response = planet_to_orchestrator_receiver.recv();
+        assert!( matches!(response, Ok(PlanetToOrchestrator::StartPlanetAIResult { .. })) , "Expected a StartPlanetAIResult!");
+        assert!( matches!(response, Ok(PlanetToOrchestrator::StartPlanetAIResult { planet_id: 2 })) , "Expected a StartPlanetAIResult with id = 2!");
 
     }
 
