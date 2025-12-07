@@ -24,6 +24,8 @@ struct CargonautsPlanet {
     ai_is_active: bool
 }
 
+//const planet_id : u32 = 258335 + ;
+
 /// Function that create a Planet with specific arguments TODO
 pub fn create_planet(
     orch_channels: (Receiver<OrchestratorToPlanet>, Sender<PlanetToOrchestrator>),
@@ -462,7 +464,7 @@ fn handle_energy_cell_request(
 mod tests {
 
 
-    
+
     use std::sync::{Arc, Mutex};
     use std::collections::HashSet;
     use std::thread;
@@ -497,23 +499,6 @@ mod tests {
         (planet_to_orchestrato_sender, planet_to_orchestrator_receiver)
     }
 
-    fn create_planet_t(
-        (planet_to_orchestrator_sender, orchestrator_to_planet_receiver): (crossbeam_channel::Sender<PlanetToOrchestrator>, crossbeam_channel::Receiver<OrchestratorToPlanet>),
-        explorer_to_planet_receiver: crossbeam_channel::Receiver<ExplorerToPlanet>,
-        ai: Box<dyn PlanetAI>
-    ) -> Planet {
-        let planet = Planet::new(
-            2,
-            PlanetType::C,
-            ai,
-            vec![BasicResourceType::Silicon],
-            vec![ComplexResourceType::Diamond, ComplexResourceType::AIPartner],
-            (orchestrator_to_planet_receiver, planet_to_orchestrator_sender),
-            explorer_to_planet_receiver
-        );
-        assert!(planet.is_ok(), "Planet creatrion error!");
-        planet.unwrap()
-    }
 
     /// Assert that when the cells is not charged (which means as soon as the planet is created)
     /// the [Asteroid] destroys the [Planet].
@@ -525,9 +510,8 @@ mod tests {
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
         let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
         let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
-        let (planet_to_explorer_sender, _) = planet_to_explorer_channel_creator();
-        let mut planet = create_planet_t(
-            (planet_to_orchestrator_sender, orchestrator_to_planet_receiver, ),
+        let mut planet = create_planet(
+            (orchestrator_to_planet_receiver, planet_to_orchestrator_sender ),
             explorer_to_planet_receiver,
             Box::from(toy_struct)
         );
@@ -539,6 +523,7 @@ mod tests {
 
         // ----------------- Make the planet start
         let _ = orchestrator_to_planet_sender.send(OrchestratorToPlanet::StartPlanetAI);
+        let _ = planet_to_orchestrator_receiver.recv();
 
 
         // ----------------- Send an asteroid
@@ -557,11 +542,9 @@ mod tests {
         let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
 
         let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
-        let (planet_to_explorer_sender, _) = planet_to_explorer_channel_creator();
 
-
-        let mut planet = create_planet_t(
-            (planet_to_orchestrator_sender, orchestrator_to_planet_receiver),
+        let mut planet = create_planet(
+            (orchestrator_to_planet_receiver, planet_to_orchestrator_sender ),
             explorer_to_planet_receiver,
             Box::from(toy_struct)
         );
@@ -573,6 +556,7 @@ mod tests {
 
         // Make the PlanetAI start
         let _ = orchestrator_to_planet_sender.send(OrchestratorToPlanet::StartPlanetAI);
+        let _ = planet_to_orchestrator_receiver.recv();
 
 
         // Send sunrays
@@ -600,14 +584,13 @@ mod tests {
 
         let toy_struct = CargonautsPlanet::default();
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
-        let (planet_to_orchestrato_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
+        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
 
         let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
-        let (planet_to_explorer_sender, _) = planet_to_explorer_channel_creator();
 
 
-        let mut planet = create_planet_t(
-            (planet_to_orchestrato_sender, orchestrator_to_planet_receiver),
+        let mut planet = create_planet(
+            (orchestrator_to_planet_receiver, planet_to_orchestrator_sender ),
             explorer_to_planet_receiver,
             Box::from(toy_struct)
         );
@@ -644,11 +627,10 @@ mod tests {
         let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
 
         let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
-        let (planet_to_explorer_sender, _) = planet_to_explorer_channel_creator();
 
 
-        let mut planet = create_planet_t(
-            (planet_to_orchestrator_sender, orchestrator_to_planet_receiver),
+        let mut planet = create_planet(
+            (orchestrator_to_planet_receiver, planet_to_orchestrator_sender ),
             explorer_to_planet_receiver,
             Box::from(toy_struct)
         );
