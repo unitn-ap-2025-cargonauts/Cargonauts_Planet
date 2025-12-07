@@ -367,10 +367,10 @@ fn handle_generate_resource_request(
             BasicResourceType::Carbon => {
                 match generator.make_carbon(energy_cell){
                     Ok( r) => resource = Some(BasicResource::Carbon(r)),
-                    Err(e) => panic!("{:?}", e) //TODO right?
+                    Err(e) => panic!("{:?}", e) //TODO log it
                 }
             },
-            _ => panic!("Unexpected resource type") //TODO right?
+            _ => panic!("Unexpected resource type") //TODO log it
         }
     }
     Some(PlanetToExplorer::GenerateResourceResponse { resource })
@@ -520,7 +520,6 @@ mod tests {
     use std::collections::HashSet;
     use std::thread;
     use common_game::components::asteroid::Asteroid;
-    use common_game::components::planet::{Planet, PlanetAI, PlanetType};
     use common_game::components::sunray::Sunray;
     use common_game::components::resource::{BasicResourceType, ComplexResourceType};
     use common_game::protocols::messages::{ExplorerToPlanet, OrchestratorToPlanet, PlanetToExplorer, PlanetToOrchestrator};
@@ -562,6 +561,7 @@ mod tests {
         let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
         let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
         let mut planet = create_planet(
+            2,
             (orchestrator_to_planet_receiver, planet_to_orchestrator_sender ),
             explorer_to_planet_receiver,
             Box::from(toy_struct)
@@ -595,6 +595,7 @@ mod tests {
         let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
 
         let mut planet = create_planet(
+            2,
             (orchestrator_to_planet_receiver, planet_to_orchestrator_sender ),
             explorer_to_planet_receiver,
             Box::from(toy_struct)
@@ -681,6 +682,7 @@ mod tests {
 
 
         let mut planet = create_planet(
+            2,
             (orchestrator_to_planet_receiver, planet_to_orchestrator_sender ),
             explorer_to_planet_receiver,
             Box::from(toy_struct)
