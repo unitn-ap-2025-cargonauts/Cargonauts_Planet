@@ -69,6 +69,7 @@ impl Default for CargonautsPlanet {
 }
 
 impl PlanetAI for CargonautsPlanet {
+
     fn handle_orchestrator_msg(
         &mut self,
         state: &mut PlanetState,
@@ -76,68 +77,30 @@ impl PlanetAI for CargonautsPlanet {
         combinator: &Combinator,
         msg: OrchestratorToPlanet,
     ) -> Option<PlanetToOrchestrator> {
-
         match msg {
-            // Charge single cell at vector (position 0 because the planet is of Type C
             OrchestratorToPlanet::Sunray(sunray) => {
-                let cell = state.cell_mut(0);
-                cell.charge(sunray);
-
+                let _ = state.charge_cell(sunray);
                 Some(PlanetToOrchestrator::SunrayAck {
                     planet_id: state.id(),
                 })
-
             }
 
-            // Use the method to be implemented later
-            OrchestratorToPlanet::Asteroid(_) => {
-                let maybe_rocket = self.handle_asteroid(state, generator, combinator);
-
-                Some(PlanetToOrchestrator::AsteroidAck {
+            OrchestratorToPlanet::InternalStateRequest => {
+                Some(PlanetToOrchestrator::InternalStateResponse {
                     planet_id: state.id(),
-                    rocket: maybe_rocket,
+                    planet_state: state.to_dummy(),
                 })
             }
 
-            //same here and for stop planetAi
-            OrchestratorToPlanet::StartPlanetAI => {
-                self.start(state);
-
-                Some(PlanetToOrchestrator::StartPlanetAIResult {
-                    planet_id: state.id(),
-                })
-            }
-
-            OrchestratorToPlanet::StopPlanetAI => {
-                self.stop(state);
-
-                Some(PlanetToOrchestrator::StopPlanetAIResult {
-                    planet_id: state.id(),
-                })
-            }
-
-            OrchestratorToPlanet::InternalStateRequest=> {
-                todo!(
-                    "Waiting for upstream fix: PlanetState allows no cloning nor manual construction"
-                );
-            }
-
-            OrchestratorToPlanet::IncomingExplorerRequest {
-                explorer_id: _,
-                new_mpsc_sender: _
-            } => {
-                todo!()
-            }
-
-            OrchestratorToPlanet::OutgoingExplorerRequest {explorer_id: _} => {
-                todo!();
-            },
-            OrchestratorToPlanet::KillPlanet => {
-                todo!()
-            }
+            /* All the other messages (Start,Stop,Asteroid,Explorer...)
+             are already handled by the 'run' loop on planet.rs
+             If, for some reason, they get here, we ignore it
+             */
+            _ => None,
         }
     }
-    
+
+
     fn handle_explorer_msg(
         &mut self,
         state: &mut PlanetState,
@@ -221,7 +184,7 @@ impl PlanetAI for CargonautsPlanet {
 
 
     /// Handler for the [Asteroid] message, it returns `None` or `Some([Rocket])` based on the rules of the
-    /// [Planet] or the availability of [Rocket] on the planet. 
+    /// [Planet] or the availability of [Rocket] on the planet.
     ///
     /// More precisely, it returns `None` if:
     /// - The [Planet] can not create any [Rocket] because of its rules.
@@ -300,7 +263,7 @@ fn handle_supported_resource_request(
     generator: &Generator,
 ) -> Option<PlanetToExplorer> {
     let resource_list = generator.all_available_recipes();
-    
+
     Some(PlanetToExplorer::SupportedResourceResponse { resource_list })
 }
 
