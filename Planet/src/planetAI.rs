@@ -31,12 +31,12 @@ fn log_message(
     receiver_id: impl Into<String>,
     event_type: EventType,
     channel: Channel,
-    payload: Vec::<(String, String)>,
+    payload: Vec<(String, String)>,
 ) {
-    let mut ppayload = Payload::new();
+    let mut payload_object = Payload::new();
 
     for tuples in payload {
-        ppayload.insert(tuples.0, tuples.1 );
+        payload_object.insert(tuples.0, tuples.1 );
     }
 
     LogEvent::new(
@@ -46,7 +46,7 @@ fn log_message(
         receiver_id,
         event_type,
         channel,
-        ppayload
+        payload_object
     );
 }
 
@@ -703,7 +703,6 @@ mod tests {
     #[test]
     fn test_rocket_with_disabled_ai() {
 
-        let toy_struct = CargonautsPlanet::default();
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
         let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
 
@@ -711,10 +710,11 @@ mod tests {
 
 
         let mut planet = create_planet(
-            2,
-            (orchestrator_to_planet_receiver, planet_to_orchestrator_sender ),
+
+            orchestrator_to_planet_receiver,
+            planet_to_orchestrator_sender ,
             explorer_to_planet_receiver,
-            Box::from(toy_struct)
+            2
         );
 
         let _ = thread::spawn(move|| {
