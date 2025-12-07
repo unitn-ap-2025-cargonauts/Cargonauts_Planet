@@ -594,7 +594,7 @@ mod tests {
 
 
     /// Send the rocket when the AI is not enabled
-    /*#[test]
+    #[test]
     fn test_rocket_with_disabled_ai() {
 
         let toy_struct = CargonautsPlanet::default();
@@ -605,6 +605,7 @@ mod tests {
 
 
         let mut planet = create_planet(
+            2, 
             (orchestrator_to_planet_receiver, planet_to_orchestrator_sender ),
             explorer_to_planet_receiver,
             Box::from(toy_struct)
@@ -630,7 +631,7 @@ mod tests {
         let planet_response = planet_to_orchestrator_receiver.recv();
         assert!(matches!(planet_response, Ok(PlanetToOrchestrator::Stopped {..})));
 
-    }*/
+    }
 
 
     /// Testing the start and stop of the AI.
