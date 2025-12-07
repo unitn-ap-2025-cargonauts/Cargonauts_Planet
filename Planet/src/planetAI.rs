@@ -20,11 +20,8 @@ trait PlanetDefinition {
 }
 
 
-struct CargonautsPlanet {
-    ai_is_active: bool
-}
+struct CargonautsPlanet;
 
-//const planet_id : u32 = 258335 + ;
 
 /// Function that create a Planet with specific arguments TODO
 pub fn create_planet(
@@ -58,9 +55,7 @@ impl PlanetDefinition for CargonautsPlanet {
 
 impl Default for CargonautsPlanet {
     fn default() -> Self {
-        Self {
-            ai_is_active: true
-        }
+        Self
     }
 }
 
@@ -184,9 +179,6 @@ impl PlanetAI for CargonautsPlanet {
         _: &Combinator
     ) -> Option<Rocket> {
 
-        if !self.ai_is_active || !state.can_have_rocket(){
-            return None;
-        }
 
         // At this point the Rocket can be built. Check if there already
         // is a rocket ready to be used
@@ -215,7 +207,7 @@ impl PlanetAI for CargonautsPlanet {
     ///
     /// Start messages received when planet is already running are **ignored**.
     fn start(&mut self, state: &PlanetState) {
-        self.ai_is_active = true;
+        todo!("loggin phase");
     }
 
 
@@ -223,7 +215,7 @@ impl PlanetAI for CargonautsPlanet {
     /// is received, but **only if** the planet is currently in a *running* state.
     ///
     fn stop(&mut self, state: &PlanetState) {
-        self.ai_is_active = false;
+        todo!("logging phase")
     }
 }
 
