@@ -10,6 +10,7 @@ use crossbeam_channel::{Sender, Receiver};
 use common_game::components::planet::*;
 use common_game::components::resource::*;
 use common_game::components::rocket::Rocket;
+use common_game::logging::{ActorType, Channel, EventType, LogEvent, Payload};
 use common_game::protocols::messages::*;
 
 use paste::paste;
@@ -149,23 +150,73 @@ impl PlanetAI for CargonautsPlanet {
     ) -> Option<PlanetToExplorer> {
         match msg {
             ExplorerToPlanet::SupportedResourceRequest { explorer_id } => {
-                println!("SupportedResourceRequest received from explorer[{}]", explorer_id);
+                let mut payload = Payload::new();
+                payload.insert("msg_type".to_string(), "SupportedResourceRequest".to_string());
+                LogEvent::new(
+                    ActorType::Explorer,
+                    explorer_id, ActorType::Planet,
+                    state.id().to_string(),
+                    EventType::MessageExplorerToPlanet,
+                    Channel::Info,
+                    payload
+                ).emit();
+
                 handle_supported_resource_request(generator)
             },
             ExplorerToPlanet::SupportedCombinationRequest { explorer_id } => {
-                println!("SupportedCombinationRequest received from explorer[{}]", explorer_id);
+                let mut payload = Payload::new();
+                payload.insert("msg_type".to_string(), "SupportedCombinationRequest".to_string());
+                LogEvent::new(
+                    ActorType::Explorer,
+                    explorer_id, ActorType::Planet,
+                    state.id().to_string(),
+                    EventType::MessageExplorerToPlanet,
+                    Channel::Info,
+                    payload
+                ).emit();
+
                 handle_supported_combination_request(combinator)
             },
             ExplorerToPlanet::GenerateResourceRequest { explorer_id, resource } => {
-                println!("GenerateResourceRequest received from explorer[{}]. Ask for generate {:?}", explorer_id, resource);
+                let mut payload = Payload::new();
+                payload.insert("msg_type".to_string(), "GenerateResourceRequest".to_string());
+                LogEvent::new(
+                    ActorType::Explorer,
+                    explorer_id, ActorType::Planet,
+                    state.id().to_string(),
+                    EventType::MessageExplorerToPlanet,
+                    Channel::Info,
+                    payload
+                ).emit();
+
                 handle_generate_resource_request(state, generator, resource)
             },
             ExplorerToPlanet::CombineResourceRequest { explorer_id, msg } => {
-                println!("CombineResourceRequest received from explorer[{}]. Ask for craft {:?}", explorer_id, msg);
+                let mut payload = Payload::new();
+                payload.insert("msg_type".to_string(), "CombineResourceRequest".to_string());
+                LogEvent::new(
+                    ActorType::Explorer,
+                    explorer_id, ActorType::Planet,
+                    state.id().to_string(),
+                    EventType::MessageExplorerToPlanet,
+                    Channel::Info,
+                    payload
+                ).emit();
+
                 handle_combine_resource_request(state, combinator, msg)
             },
             ExplorerToPlanet::AvailableEnergyCellRequest { explorer_id } => {
-                println!("AvailableEnergyCellRequest received from explorer[{}]", explorer_id);
+                let mut payload = Payload::new();
+                payload.insert("msg_type".to_string(), "AvailableEnergyCellRequest".to_string());
+                LogEvent::new(
+                    ActorType::Explorer,
+                    explorer_id, ActorType::Planet,
+                    state.id().to_string(),
+                    EventType::MessageExplorerToPlanet,
+                    Channel::Info,
+                    payload
+                ).emit();
+
                 handle_energy_cell_request(state)
             },
         }
@@ -233,9 +284,6 @@ impl PlanetAI for CargonautsPlanet {
     }
 }
 
-// === OrchestratorToPlanet Handler ================================================================
-
-
 // === ExplorerToPlanet Handler ====================================================================
 /// This handler returns a [SupportedResourceResponse] message that wrap the list of basic resources
 /// that the planet can currently generate
@@ -253,10 +301,12 @@ impl PlanetAI for CargonautsPlanet {
 /// The planet can craft basic resources, so the handler:
 /// - Get the set of available basic resource from the planet generator
 /// - Wrap the set in a [SupportedResourceResponse] message and return it
+#[allow(dead_code)]
 fn handle_supported_resource_request(
     generator: &Generator,
 ) -> Option<PlanetToExplorer> {
     let resource_list = generator.all_available_recipes();
+    
     Some(PlanetToExplorer::SupportedResourceResponse { resource_list })
 }
 
@@ -276,6 +326,7 @@ fn handle_supported_resource_request(
 /// The planet can craft complex resources, so the handler:
 /// - Get the set of available complex resource from the planet combinator
 /// - Wrap the set in a [SupportedCombinationResponse] message and return it
+#[allow(dead_code)]
 fn handle_supported_combination_request(
     combinator: &Combinator,
 ) -> Option<PlanetToExplorer> {
@@ -284,7 +335,7 @@ fn handle_supported_combination_request(
     Some(PlanetToExplorer::SupportedCombinationResponse  { combination_list })
 }
 
-/// This handler processes a request to generate a basic resource using the planet's generator, 
+/// This handler processes a request to generate a basic resource using the planet's generator,
 /// if energy is available.
 /// It returns a [GenerateResourceResponse] message containing the generated resource.
 ///
@@ -309,6 +360,7 @@ fn handle_supported_combination_request(
 ///     - Wrap the generated resource in a [GenerateResourceResponse] message and return it.
 /// - Else:
 ///     - Wrap a `None` in a [GenerateResourceResponse] message and return it.
+#[allow(dead_code)]
 fn handle_generate_resource_request(
     state: &mut PlanetState,
     generator: &Generator,
@@ -374,6 +426,7 @@ macro_rules! generate_complex_resource {
 ///     - Wrap the produced resource in a [CombineResourceResponse] message and return it.
 /// - Else:
 ///     - Wrap a `None` in a [CombineResourceResponse] message and return it.
+#[allow(dead_code)]
 fn handle_combine_resource_request(
     state: &mut PlanetState,
     combinator: &Combinator,
@@ -456,6 +509,7 @@ fn handle_combine_resource_request(
 /// - Initializes a counter to 0
 /// - Accesses the energy cell and increments the counter if it is charged
 /// - Wraps the counter inside an [AvailableEnergyCellResponse] message and returns it
+#[allow(dead_code)]
 fn handle_energy_cell_request(
     state: &PlanetState,
 ) -> Option<PlanetToExplorer> {
@@ -468,13 +522,11 @@ fn handle_energy_cell_request(
 
 #[cfg(test)]
 mod tests {
-
-
-    
     use std::sync::{Arc, Mutex};
     use std::collections::HashSet;
     use std::thread;
     use common_game::components::asteroid::Asteroid;
+    use common_game::components::planet::{Planet, PlanetAI, PlanetType};
     use common_game::components::sunray::Sunray;
     use common_game::components::resource::{BasicResourceType, ComplexResourceType};
     use common_game::protocols::messages::{ExplorerToPlanet, OrchestratorToPlanet, PlanetToExplorer, PlanetToOrchestrator};
@@ -500,8 +552,8 @@ mod tests {
 
 
     fn planet_to_orchestrator_channels_creator() -> (crossbeam_channel::Sender<PlanetToOrchestrator>, crossbeam_channel::Receiver<PlanetToOrchestrator>) {
-        let (planet_to_orchestrato_sender, planet_to_orchestrator_receiver): (crossbeam_channel::Sender<PlanetToOrchestrator>, crossbeam_channel::Receiver<PlanetToOrchestrator>) = crossbeam_channel::unbounded();
-        (planet_to_orchestrato_sender, planet_to_orchestrator_receiver)
+        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver): (crossbeam_channel::Sender<PlanetToOrchestrator>, crossbeam_channel::Receiver<PlanetToOrchestrator>) = crossbeam_channel::unbounded();
+        (planet_to_orchestrator_sender, planet_to_orchestrator_receiver)
     }
 
     fn create_planet_t(
@@ -518,7 +570,7 @@ mod tests {
             (orchestrator_to_planet_receiver, planet_to_orchestrator_sender),
             explorer_to_planet_receiver
         );
-        assert!(planet.is_ok(), "Planet creatrion error!");
+        assert!(planet.is_ok(), "Planet creation error!");
         planet.unwrap()
     }
 
@@ -688,10 +740,10 @@ mod tests {
 
     #[test]
     fn test_unit_handle_supported_resource_request() {
-        let (to_orchestrator_tx, _to_orchestrator_rx) = unbounded(); // Planet -> Orchestrator
-        let (_from_orchestrator_tx, from_orchestrator_rx) = unbounded(); // Orchestrator -> Planet
-        let (_to_explorer_tx, _to_explorer_rx) = explorer_to_planet_channels_creator(); // Planet -> Explorer
-        let (_from_explorer_tx, from_explorer_rx) = unbounded(); // Explorer -> Planet
+        let (to_orchestrator_tx, _to_orchestrator_rx) = planet_to_orchestrator_channels_creator(); // Planet -> Orchestrator
+        let (_from_orchestrator_tx, from_orchestrator_rx) = orchestrator_to_planet_channels_creator(); // Orchestrator -> Planet
+        let (_to_explorer_tx, _to_explorer_rx) = planet_to_explorer_channel_creator(); // Planet -> Explorer
+        let (_from_explorer_tx, from_explorer_rx) = explorer_to_planet_channels_creator(); // Explorer -> Planet
 
         let planet = create_planet(
             2,
@@ -715,10 +767,10 @@ mod tests {
 
     #[test]
     fn test_unit_handle_supported_combination_request() {
-        let (to_orchestrator_tx, _to_orchestrator_rx) = unbounded(); // Planet -> Orchestrator
-        let (_from_orchestrator_tx, from_orchestrator_rx) = unbounded(); // Orchestrator -> Planet
-        let (_to_explorer_tx, _to_explorer_rx) = explorer_to_planet_channels_creator(); // Planet -> Explorer
-        let (_from_explorer_tx, from_explorer_rx) = unbounded(); // Explorer -> Planet
+        let (to_orchestrator_tx, _to_orchestrator_rx) = planet_to_orchestrator_channels_creator(); // Planet -> Orchestrator
+        let (_from_orchestrator_tx, from_orchestrator_rx) = orchestrator_to_planet_channels_creator(); // Orchestrator -> Planet
+        let (_to_explorer_tx, _to_explorer_rx) = planet_to_explorer_channel_creator(); // Planet -> Explorer
+        let (_from_explorer_tx, from_explorer_rx) = explorer_to_planet_channels_creator(); // Explorer -> Planet
 
         let planet = create_planet(
             2,
@@ -742,10 +794,10 @@ mod tests {
 
     #[test]
     fn test_integration_handle_orchestrator_msg_sunray_and_handle_energy_cell_request_charge() {
-        let (to_orchestrator_tx, _to_orchestrator_rx) = unbounded();
-        let (from_orchestrator_tx, from_orchestrator_rx) = unbounded();
-        let (_to_explorer_tx, _to_explorer_rx) = explorer_to_planet_channels_creator();
-        let (_from_explorer_tx, from_explorer_rx) = unbounded();
+        let (to_orchestrator_tx, _to_orchestrator_rx) = planet_to_orchestrator_channels_creator(); // Planet -> Orchestrator
+        let (from_orchestrator_tx, from_orchestrator_rx) = orchestrator_to_planet_channels_creator(); // Orchestrator -> Planet
+        let (_to_explorer_tx, _to_explorer_rx) = planet_to_explorer_channel_creator(); // Planet -> Explorer
+        let (_from_explorer_tx, from_explorer_rx) = explorer_to_planet_channels_creator(); // Explorer -> Planet
 
         let planet = Arc::new(Mutex::new(create_planet(
             2,
@@ -781,10 +833,10 @@ mod tests {
 
     #[test]
     fn test_unit_handle_energy_cell_request_discharge() {
-        let (to_orchestrator_tx, _to_orchestrator_rx) = unbounded(); // Planet -> Orchestrator
-        let (_from_orchestrator_tx, from_orchestrator_rx) = unbounded(); // Orchestrator -> Planet
-        let (_to_explorer_tx, _to_explorer_rx) = explorer_to_planet_channels_creator(); // Planet -> Explorer
-        let (_from_explorer_tx, from_explorer_rx) = unbounded(); // Explorer -> Planet
+        let (to_orchestrator_tx, _to_orchestrator_rx) = planet_to_orchestrator_channels_creator(); // Planet -> Orchestrator
+        let (_from_orchestrator_tx, from_orchestrator_rx) = orchestrator_to_planet_channels_creator(); // Orchestrator -> Planet
+        let (_to_explorer_tx, _to_explorer_rx) = planet_to_explorer_channel_creator(); // Planet -> Explorer
+        let (_from_explorer_tx, from_explorer_rx) = explorer_to_planet_channels_creator(); // Explorer -> Planet
 
         let planet = create_planet(
             2,
