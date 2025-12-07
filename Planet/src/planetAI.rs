@@ -15,6 +15,7 @@ use common_game::protocols::messages::*;
 
 use paste::paste;
 
+#[allow(dead_code)]
 trait PlanetDefinition {
     fn get_name() -> &'static str;
     fn get_type() -> &'static PlanetType;
@@ -51,16 +52,17 @@ fn log_message(
 
 
 /// Function that create a Planet with specific arguments TODO
+#[allow(dead_code)]
 pub fn create_planet(
-    id : u32,
-    orch_channels: (Receiver<OrchestratorToPlanet>, Sender<PlanetToOrchestrator>),
-    explorer_channels: Receiver<ExplorerToPlanet>,
-    ai: Box<dyn PlanetAI> //TODO do it inside the function
+    rx_orchestrator: Receiver<OrchestratorToPlanet>,
+    tx_orchestrator: Sender<PlanetToOrchestrator>,
+    rx_explorer: Receiver<ExplorerToPlanet>,
+    planet_id : u32,
 ) -> Planet {
     let planet = Planet::new(
-        id,
+        planet_id,
         PlanetType::C,
-        ai,
+        Box::new(CargonautsPlanet::default()),
         vec![BasicResourceType::Carbon],
         vec![
             ComplexResourceType::Diamond,
@@ -70,8 +72,8 @@ pub fn create_planet(
             ComplexResourceType::Robot,
             ComplexResourceType::Water
         ],
-        orch_channels,
-        explorer_channels
+        (rx_orchestrator, tx_orchestrator),
+        rx_explorer
     );
     assert!(planet.is_ok(), "Planet creation error!");
     planet.unwrap()
@@ -99,8 +101,8 @@ impl PlanetAI for CargonautsPlanet {
     fn handle_orchestrator_msg(
         &mut self,
         state: &mut PlanetState,
-        generator: &Generator,
-        combinator: &Combinator,
+        _generator: &Generator,
+        _combinator: &Combinator,
         msg: OrchestratorToPlanet,
     ) -> Option<PlanetToOrchestrator> {
         match msg {
@@ -593,28 +595,28 @@ mod tests {
     use common_game::components::resource::{BasicResourceType, ComplexResourceType};
     use common_game::protocols::messages::{ExplorerToPlanet, OrchestratorToPlanet, PlanetToExplorer, PlanetToOrchestrator};
     use crossbeam_channel::{unbounded, Receiver, Sender};
-    use crate::planetAI::{handle_energy_cell_request, handle_supported_combination_request, handle_supported_resource_request, CargonautsPlanet, create_planet};
+    use crate::planetAI::{handle_energy_cell_request, handle_supported_combination_request, handle_supported_resource_request, create_planet};
 
 
-    fn planet_to_explorer_channel_creator() -> (crossbeam_channel::Sender<PlanetToExplorer>, crossbeam_channel::Receiver<PlanetToExplorer>) {
-        let (planet_to_explorer_sender, planet_to_explorer_receiver): (crossbeam_channel::Sender<PlanetToExplorer>, crossbeam_channel::Receiver<PlanetToExplorer>) = crossbeam_channel::unbounded();
+    fn planet_to_explorer_channel_creator() -> (Sender<PlanetToExplorer>, Receiver<PlanetToExplorer>) {
+        let (planet_to_explorer_sender, planet_to_explorer_receiver): (Sender<PlanetToExplorer>, Receiver<PlanetToExplorer>) = unbounded();
         (planet_to_explorer_sender, planet_to_explorer_receiver)
     }
 
 
-    fn explorer_to_planet_channels_creator() -> (crossbeam_channel::Sender<ExplorerToPlanet>, crossbeam_channel::Receiver<ExplorerToPlanet>) {
-        let (explorer_to_planet_sender, explorer_to_planet_receiver): (crossbeam_channel::Sender<ExplorerToPlanet>, crossbeam_channel::Receiver<ExplorerToPlanet>) = crossbeam_channel::unbounded();
+    fn explorer_to_planet_channels_creator() -> (Sender<ExplorerToPlanet>, Receiver<ExplorerToPlanet>) {
+        let (explorer_to_planet_sender, explorer_to_planet_receiver): (Sender<ExplorerToPlanet>, Receiver<ExplorerToPlanet>) = unbounded();
         (explorer_to_planet_sender, explorer_to_planet_receiver)
     }
 
-    fn orchestrator_to_planet_channels_creator() -> (crossbeam_channel::Sender<OrchestratorToPlanet>, crossbeam_channel::Receiver<OrchestratorToPlanet>) {
-        let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver): (crossbeam_channel::Sender<OrchestratorToPlanet>, crossbeam_channel::Receiver<OrchestratorToPlanet>) = crossbeam_channel::unbounded();
+    fn orchestrator_to_planet_channels_creator() -> (Sender<OrchestratorToPlanet>, Receiver<OrchestratorToPlanet>) {
+        let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver): (Sender<OrchestratorToPlanet>, Receiver<OrchestratorToPlanet>) = unbounded();
         (orchestrator_to_planet_sender, orchestrator_to_planet_receiver)
     }
 
 
-    fn planet_to_orchestrator_channels_creator() -> (crossbeam_channel::Sender<PlanetToOrchestrator>, crossbeam_channel::Receiver<PlanetToOrchestrator>) {
-        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver): (crossbeam_channel::Sender<PlanetToOrchestrator>, crossbeam_channel::Receiver<PlanetToOrchestrator>) = crossbeam_channel::unbounded();
+    fn planet_to_orchestrator_channels_creator() -> (Sender<PlanetToOrchestrator>, Receiver<PlanetToOrchestrator>) {
+        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver): (Sender<PlanetToOrchestrator>, Receiver<PlanetToOrchestrator>) = unbounded();
         (planet_to_orchestrator_sender, planet_to_orchestrator_receiver)
     }
 
@@ -625,15 +627,14 @@ mod tests {
     fn asteroid_with_uncharged_cell() {
 
         // ----------------- Channels and planet creation
-        let toy_struct = CargonautsPlanet::default();
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
         let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
         let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
         let mut planet = create_planet(
-            2,
-            (orchestrator_to_planet_receiver, planet_to_orchestrator_sender ),
+            orchestrator_to_planet_receiver,
+            planet_to_orchestrator_sender,
             explorer_to_planet_receiver,
-            Box::from(toy_struct)
+            2,
         );
 
         // ----------------- Spawn the thread:
@@ -657,17 +658,16 @@ mod tests {
     /// Assert that when the cell is charged the [Asteroid] does not destroy the [Planet].
     #[test]
     fn test_asteroid_handler_with_charged_cell() {
-        let toy_struct = CargonautsPlanet::default();
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
         let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
 
         let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
 
         let mut planet = create_planet(
-            2,
-            (orchestrator_to_planet_receiver, planet_to_orchestrator_sender ),
+            orchestrator_to_planet_receiver,
+            planet_to_orchestrator_sender,
             explorer_to_planet_receiver,
-            Box::from(toy_struct)
+            2,
         );
 
         // Spawn the thread:
@@ -744,7 +744,6 @@ mod tests {
     #[test]
     fn test_start_and_stop_planet_ai() {
 
-        let toy_struct = CargonautsPlanet::default();
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
         let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
 
@@ -752,10 +751,10 @@ mod tests {
 
 
         let mut planet = create_planet(
-            2,
-            (orchestrator_to_planet_receiver, planet_to_orchestrator_sender ),
+            orchestrator_to_planet_receiver,
+            planet_to_orchestrator_sender,
             explorer_to_planet_receiver,
-            Box::from(toy_struct)
+            2,
         );
 
 
@@ -792,10 +791,10 @@ mod tests {
         let (_from_explorer_tx, from_explorer_rx) = explorer_to_planet_channels_creator(); // Explorer -> Planet
 
         let planet = create_planet(
-            2,
-            (from_orchestrator_rx, to_orchestrator_tx),
+            from_orchestrator_rx,
+            to_orchestrator_tx,
             from_explorer_rx,
-            Box::from(CargonautsPlanet::default())
+            2,
         );
 
         let result = handle_supported_resource_request(planet.generator());
@@ -819,10 +818,10 @@ mod tests {
         let (_from_explorer_tx, from_explorer_rx) = explorer_to_planet_channels_creator(); // Explorer -> Planet
 
         let planet = create_planet(
-            2,
-            (from_orchestrator_rx, to_orchestrator_tx),
+            from_orchestrator_rx,
+            to_orchestrator_tx,
             from_explorer_rx,
-            Box::from(CargonautsPlanet::default())
+            2,
         );
 
         let result = handle_supported_combination_request(planet.combinator());
@@ -831,7 +830,14 @@ mod tests {
 
         if let Some(PlanetToExplorer::SupportedCombinationResponse { combination_list }) = result {
             let result_set: HashSet<ComplexResourceType> = combination_list.into_iter().collect();
-            let expected_set: HashSet<ComplexResourceType> = vec![ComplexResourceType::Diamond, ComplexResourceType::Life].into_iter().collect();
+            let expected_set: HashSet<ComplexResourceType> = vec![
+                ComplexResourceType::Diamond,
+                ComplexResourceType::Life,
+                ComplexResourceType::AIPartner,
+                ComplexResourceType::Dolphin,
+                ComplexResourceType::Robot,
+                ComplexResourceType::Water
+            ].into_iter().collect();
             assert_eq!(result_set, expected_set);
         } else {
             panic!("Expected SupportedCombinationResponse variant");
@@ -846,16 +852,16 @@ mod tests {
         let (_from_explorer_tx, from_explorer_rx) = explorer_to_planet_channels_creator(); // Explorer -> Planet
 
         let planet = Arc::new(Mutex::new(create_planet(
-            2,
-            (from_orchestrator_rx, to_orchestrator_tx),
+            from_orchestrator_rx,
+            to_orchestrator_tx,
             from_explorer_rx,
-            Box::from(CargonautsPlanet::default())
+            2,
         )));
 
         let planet_for_thread = Arc::clone(&planet);
 
         let thread_var = thread::spawn(move || {
-            planet_for_thread.lock().unwrap().run();
+            let _ = planet_for_thread.lock().unwrap().run();
         });
 
         let _ = from_orchestrator_tx.send(OrchestratorToPlanet::StartPlanetAI);
@@ -885,10 +891,10 @@ mod tests {
         let (_from_explorer_tx, from_explorer_rx) = explorer_to_planet_channels_creator(); // Explorer -> Planet
 
         let planet = create_planet(
-            2,
-            (from_orchestrator_rx, to_orchestrator_tx),
+            from_orchestrator_rx,
+            to_orchestrator_tx,
             from_explorer_rx,
-            Box::from(CargonautsPlanet::default())
+            2,
         );
 
         let result = handle_energy_cell_request(planet.state());
