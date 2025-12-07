@@ -6,6 +6,7 @@
 //!
 //! Each handler is defined as a standalone function to keep the logic modular and clean.
 
+use crossbeam_channel::{Sender, Receiver};
 use common_game::components::planet::*;
 use common_game::components::resource::*;
 use common_game::components::rocket::Rocket;
@@ -21,6 +22,25 @@ trait PlanetDefinition {
 
 struct CargonautsPlanet {
     ai_is_active: bool
+}
+
+/// Function that create a Planet with specific arguments TODO
+pub fn create_planet(
+    orch_channels: (Receiver<OrchestratorToPlanet>, Sender<PlanetToOrchestrator>),
+    explorer_channels: Receiver<ExplorerToPlanet>,
+    ai: Box<dyn PlanetAI>
+) -> Planet {
+    let planet = Planet::new(
+        2,
+        PlanetType::C,
+        ai,
+        vec![BasicResourceType::Carbon],
+        vec![ComplexResourceType::Diamond, ComplexResourceType::Life],
+        orch_channels,
+        explorer_channels
+    );
+    assert!(planet.is_ok(), "Planet creation error!");
+    planet.unwrap()
 }
 
 impl PlanetDefinition for CargonautsPlanet {
@@ -106,6 +126,9 @@ impl PlanetAI for CargonautsPlanet {
             OrchestratorToPlanet::OutgoingExplorerRequest {explorer_id: _} => {
                 todo!();
             },
+            OrchestratorToPlanet::KillPlanet => {
+                todo!()
+            }
         }
     }
     
@@ -439,7 +462,7 @@ fn handle_energy_cell_request(
 mod tests {
 
     use std::sync::{mpsc, Arc, Mutex};
-    use std::sync::mpsc::RecvTimeoutError;
+    use std::sync::RecvTimeoutError;
     use std::collections::HashSet;
     use std::thread;
     use std::time::Duration;
@@ -448,45 +471,27 @@ mod tests {
     use common_game::components::resource::{BasicResourceType, ComplexResourceType};
     use common_game::components::planet::{Planet, PlanetAI, PlanetType};
     use common_game::protocols::messages::{ExplorerToPlanet, OrchestratorToPlanet, PlanetToExplorer, PlanetToOrchestrator};
-    use crate::planetAI::{handle_energy_cell_request, handle_supported_combination_request, handle_supported_resource_request, CargonautsPlanet};
+    use crossbeam_channel::{unbounded, Receiver, Sender};
+    use crate::planetAI::{handle_energy_cell_request, handle_supported_combination_request, handle_supported_resource_request, CargonautsPlanet, create_planet};
 
-    fn planet_to_explorer_channel_creator() -> (mpsc::Sender<PlanetToExplorer>, mpsc::Receiver<PlanetToExplorer>) {
-        let (planet_to_explorer_sender, planet_to_explorer_receiver): (mpsc::Sender<PlanetToExplorer>, mpsc::Receiver<PlanetToExplorer>) = mpsc::channel();
+    fn planet_to_explorer_channel_creator() -> (Sender<PlanetToExplorer>, Receiver<PlanetToExplorer>) {
+        let (planet_to_explorer_sender, planet_to_explorer_receiver): (Sender<PlanetToExplorer>, Receiver<PlanetToExplorer>) = unbounded();
         (planet_to_explorer_sender, planet_to_explorer_receiver)
     }
 
-    fn explorer_to_planet_channels_creator() -> (mpsc::Sender<ExplorerToPlanet>, mpsc::Receiver<ExplorerToPlanet>) {
-        let (explorer_to_planet_sender, explorer_to_planet_receiver): (mpsc::Sender<ExplorerToPlanet>, mpsc::Receiver<ExplorerToPlanet>) = mpsc::channel();
+    fn explorer_to_planet_channels_creator() -> (Sender<ExplorerToPlanet>, Receiver<ExplorerToPlanet>) {
+        let (explorer_to_planet_sender, explorer_to_planet_receiver): (Sender<ExplorerToPlanet>, Receiver<ExplorerToPlanet>) = unbounded();
         (explorer_to_planet_sender, explorer_to_planet_receiver)
     }
 
-    fn orchestrator_to_planet_channels_creator() -> (mpsc::Sender<OrchestratorToPlanet>, mpsc::Receiver<OrchestratorToPlanet>) {
-        let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver): (mpsc::Sender<OrchestratorToPlanet>, mpsc::Receiver<OrchestratorToPlanet>) = mpsc::channel();
+    fn orchestrator_to_planet_channels_creator() -> (Sender<OrchestratorToPlanet>, Receiver<OrchestratorToPlanet>) {
+        let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver): (Sender<OrchestratorToPlanet>, Receiver<OrchestratorToPlanet>) = unbounded();
         (orchestrator_to_planet_sender, orchestrator_to_planet_receiver)
     }
 
-    fn planet_to_orchestrator_channels_creator() -> (mpsc::Sender<PlanetToOrchestrator>, mpsc::Receiver<PlanetToOrchestrator>) {
-        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver): (mpsc::Sender<PlanetToOrchestrator>, mpsc::Receiver<PlanetToOrchestrator>) = mpsc::channel();
+    fn planet_to_orchestrator_channels_creator() -> (Sender<PlanetToOrchestrator>, Receiver<PlanetToOrchestrator>) {
+        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver): (Sender<PlanetToOrchestrator>, Receiver<PlanetToOrchestrator>) = unbounded();
         (planet_to_orchestrator_sender, planet_to_orchestrator_receiver)
-    }
-
-    // Function that create a Planet with specific arguments
-    fn create_planet(
-        orch_channels: (mpsc::Receiver<OrchestratorToPlanet>, mpsc::Sender<PlanetToOrchestrator>),
-        explorer_channels: (mpsc::Receiver<ExplorerToPlanet>, mpsc::Sender<PlanetToExplorer>),
-        ai: Box<dyn PlanetAI>
-    ) -> Planet {
-        let planet = Planet::new(
-            2,
-            PlanetType::C,
-            ai,
-            vec![BasicResourceType::Carbon],
-            vec![ComplexResourceType::Diamond, ComplexResourceType::Life],
-            orch_channels,
-            explorer_channels
-        );
-        assert!(planet.is_ok(), "Planet creation error!");
-        planet.unwrap()
     }
 
     /// Assert that when the cells is not charged (which means as soon as the planet is created)
@@ -502,7 +507,7 @@ mod tests {
         let (planet_to_explorer_sender, _) = planet_to_explorer_channel_creator();
         let mut planet = create_planet(
             (orchestrator_to_planet_receiver, planet_to_orchestrator_sender),
-            (explorer_to_planet_receiver, planet_to_explorer_sender),
+            explorer_to_planet_receiver,
             Box::from(toy_struct)
         );
 
@@ -536,7 +541,7 @@ mod tests {
 
         let mut planet = create_planet(
             (orchestrator_to_planet_receiver, planet_to_orchestrator_sender),
-            (explorer_to_planet_receiver, planet_to_explorer_sender),
+            explorer_to_planet_receiver,
             Box::from(toy_struct)
         );
 
@@ -582,7 +587,7 @@ mod tests {
 
         let mut planet = create_planet(
             (orchestrator_to_planet_receiver, planet_to_orchestrator_sender),
-            (explorer_to_planet_receiver, planet_to_explorer_sender),
+            explorer_to_planet_receiver,
             Box::from(toy_struct)
         );
 
@@ -622,7 +627,7 @@ mod tests {
 
         let mut planet = create_planet(
             (orchestrator_to_planet_receiver, planet_to_orchestrator_sender),
-            (explorer_to_planet_receiver, planet_to_explorer_sender),
+            explorer_to_planet_receiver,
             Box::from(toy_struct)
         );
 
@@ -650,14 +655,14 @@ mod tests {
 
     #[test]
     fn test_unit_handle_supported_resource_request() {
-        let (to_orchestrator_tx, _to_orchestrator_rx) = mpsc::channel(); // Planet -> Orchestrator
-        let (_from_orchestrator_tx, from_orchestrator_rx) = mpsc::channel(); // Orchestrator -> Planet
-        let (to_explorer_tx, _to_explorer_rx) = mpsc::channel(); // Planet -> Explorer
-        let (_from_explorer_tx, from_explorer_rx) = mpsc::channel(); // Explorer -> Planet
+        let (to_orchestrator_tx, _to_orchestrator_rx) = unbounded(); // Planet -> Orchestrator
+        let (_from_orchestrator_tx, from_orchestrator_rx) = unbounded(); // Orchestrator -> Planet
+        let (to_explorer_tx, _to_explorer_rx) = explorer_to_planet_channels_creator(); // Planet -> Explorer
+        let (_from_explorer_tx, from_explorer_rx) = unbounded(); // Explorer -> Planet
 
         let planet = create_planet(
             (from_orchestrator_rx, to_orchestrator_tx),
-            (from_explorer_rx, to_explorer_tx),
+            from_explorer_rx,
             Box::from(CargonautsPlanet::default())
         );
 
@@ -676,14 +681,14 @@ mod tests {
 
     #[test]
     fn test_unit_handle_supported_combination_request() {
-        let (to_orchestrator_tx, _to_orchestrator_rx) = mpsc::channel(); // Planet -> Orchestrator
-        let (_from_orchestrator_tx, from_orchestrator_rx) = mpsc::channel(); // Orchestrator -> Planet
-        let (to_explorer_tx, _to_explorer_rx) = mpsc::channel(); // Planet -> Explorer
-        let (_from_explorer_tx, from_explorer_rx) = mpsc::channel(); // Explorer -> Planet
+        let (to_orchestrator_tx, _to_orchestrator_rx) = unbounded(); // Planet -> Orchestrator
+        let (_from_orchestrator_tx, from_orchestrator_rx) = unbounded(); // Orchestrator -> Planet
+        let (to_explorer_tx, _to_explorer_rx) = explorer_to_planet_channels_creator(); // Planet -> Explorer
+        let (_from_explorer_tx, from_explorer_rx) = unbounded(); // Explorer -> Planet
 
         let planet = create_planet(
             (from_orchestrator_rx, to_orchestrator_tx),
-            (from_explorer_rx, to_explorer_tx),
+            from_explorer_rx,
             Box::from(CargonautsPlanet::default())
         );
 
@@ -702,14 +707,14 @@ mod tests {
 
     #[test]
     fn test_integration_handle_orchestrator_msg_sunray_and_handle_energy_cell_request_charge() {
-        let (to_orchestrator_tx, _to_orchestrator_rx) = mpsc::channel();
-        let (from_orchestrator_tx, from_orchestrator_rx) = mpsc::channel();
-        let (to_explorer_tx, _to_explorer_rx) = mpsc::channel();
-        let (_from_explorer_tx, from_explorer_rx) = mpsc::channel();
+        let (to_orchestrator_tx, _to_orchestrator_rx) = unbounded();
+        let (from_orchestrator_tx, from_orchestrator_rx) = unbounded();
+        let (to_explorer_tx, _to_explorer_rx) = explorer_to_planet_channels_creator();
+        let (_from_explorer_tx, from_explorer_rx) = unbounded();
 
         let planet = Arc::new(Mutex::new(create_planet(
             (from_orchestrator_rx, to_orchestrator_tx),
-            (from_explorer_rx, to_explorer_tx),
+            from_explorer_rx,
             Box::from(CargonautsPlanet::default())
         )));
 
@@ -740,14 +745,14 @@ mod tests {
 
     #[test]
     fn test_unit_handle_energy_cell_request_discharge() {
-        let (to_orchestrator_tx, _to_orchestrator_rx) = mpsc::channel(); // Planet -> Orchestrator
-        let (_from_orchestrator_tx, from_orchestrator_rx) = mpsc::channel(); // Orchestrator -> Planet
-        let (to_explorer_tx, _to_explorer_rx) = mpsc::channel(); // Planet -> Explorer
-        let (_from_explorer_tx, from_explorer_rx) = mpsc::channel(); // Explorer -> Planet
+        let (to_orchestrator_tx, _to_orchestrator_rx) = unbounded(); // Planet -> Orchestrator
+        let (_from_orchestrator_tx, from_orchestrator_rx) = unbounded(); // Orchestrator -> Planet
+        let (to_explorer_tx, _to_explorer_rx) = explorer_to_planet_channels_creator(); // Planet -> Explorer
+        let (_from_explorer_tx, from_explorer_rx) = unbounded(); // Explorer -> Planet
 
         let planet = create_planet(
             (from_orchestrator_rx, to_orchestrator_tx),
-            (from_explorer_rx, to_explorer_tx),
+            from_explorer_rx,
             Box::from(CargonautsPlanet::default())
         );
 

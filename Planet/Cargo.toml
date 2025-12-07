@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 common-game.workspace = true
 paste = "1.0.15"
+crossbeam-channel = "0.5.15"
