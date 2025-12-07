@@ -497,12 +497,12 @@ mod tests {
         // ----------------- Channels and planet cration
         let toy_struct = CargonautsPlanet::default();
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
-        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_crator();
+        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
         let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
         let (planet_to_explorer_sender, _) = planet_to_explorer_channel_creator();
         let mut planet = create_planet(
-            (planet_to_orchestrator_sender, orchestrator_to_planet_receiver),
-            (planet_to_explorer_sender, explorer_to_planet_receiver),
+            (orchestrator_to_planet_receiver, planet_to_orchestrator_sender),
+            (explorer_to_planet_receiver, planet_to_explorer_sender),
             Box::from(toy_struct)
         );
 
@@ -528,15 +528,15 @@ mod tests {
     fn test_asteroid_handler_with_charged_cell() {
         let toy_struct = CargonautsPlanet::default();
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
-        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_crator();
+        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
 
         let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
         let (planet_to_explorer_sender, _) = planet_to_explorer_channel_creator();
 
 
         let mut planet = create_planet(
-            (planet_to_orchestrator_sender, orchestrator_to_planet_receiver),
-            (planet_to_explorer_sender, explorer_to_planet_receiver),
+            (orchestrator_to_planet_receiver, planet_to_orchestrator_sender),
+            (explorer_to_planet_receiver, planet_to_explorer_sender),
             Box::from(toy_struct)
         );
 
@@ -614,15 +614,15 @@ mod tests {
 
         let toy_struct = CargonautsPlanet::default();
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
-        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_crator();
+        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
 
         let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
         let (planet_to_explorer_sender, _) = planet_to_explorer_channel_creator();
 
 
         let mut planet = create_planet(
-            (planet_to_orchestrator_sender, orchestrator_to_planet_receiver),
-            (planet_to_explorer_sender, explorer_to_planet_receiver),
+            (orchestrator_to_planet_receiver, planet_to_orchestrator_sender),
+            (explorer_to_planet_receiver, planet_to_explorer_sender),
             Box::from(toy_struct)
         );
 
