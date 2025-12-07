@@ -8,15 +8,13 @@
 
 use std::collections::VecDeque;
 use std::fmt::{Debug, Display, Formatter};
-use std::os::linux::raw::stat;
 use common_game::components::planet::*;
 use common_game::components::resource::*;
 use common_game::components::resource::BasicResourceType::Carbon;
 use common_game::components::resource::ComplexResourceType::Diamond;
-use common_game::components::resource::ResourceType::Complex;
 use common_game::components::rocket::Rocket;
 use common_game::protocols::messages::*;
-use log::info;
+
 
 trait PlanetDefinition {
     fn get_name(&self) -> &'static str;
@@ -114,6 +112,7 @@ struct ResourcesCache {
     cache_number_ok_value_to_be_considered: u8,
     /// Cache size
     cache_size: usize
+
 }
 
 /// [ResourcesCache] realted errors
@@ -146,7 +145,7 @@ impl ResourcesCache {
 
     /// Check if I can create `Diamond`
     fn check_diamond_creation(&self) -> bool {
-        self.basic_cache.iter().filter(|&stored_resource| stored_resource.eq( &BasicResourceType::Carbon )).count() >= 2
+        self.basic_cache.iter().filter(|&stored_resource|  self.basic_resource_extract_type(stored_resource).eq( &BasicResourceType::Carbon )).count() >= 2
     }
 
     /// The passed resource is added to the basic resources vector.
@@ -175,19 +174,14 @@ impl ResourcesCache {
     /// * `basic_resource: BasicResourceType` : the Resource that must be removed
     fn extract_basic_resource(&mut self, basic_resource: BasicResourceType) -> Option<BasicResource> {
 
-        let mut basic_in = false;
-        for basic_res in self.basic_cache.iter() {
+        let position_to_be_removed = self.basic_cache.iter().position( | inside_basic_resource |  self.basic_resource_extract_type(inside_basic_resource).eq(  &basic_resource ) );
 
-                if basic_res.
-
-        }
-
-        if basic_in {
-            let position = self.basic_cache.iter().position(| x | x.eq(&basic_resource));
-            Some(   self.basic_cache.remove(position.unwrap()) )
+        if let Some(position_to_be_removed_option) = position_to_be_removed {
+            Some ( self.basic_cache.remove( position_to_be_removed_option ) )
         } else {
             None
         }
+
     }
 
     /// Given a complex resource the first instance of it it is removed from the vector. If the resource
@@ -196,21 +190,10 @@ impl ResourcesCache {
     /// # Arguments
     ///
     /// * `complex_resource: ComplexResourceType` : the Resource that must be removed
-    fn extract_complex_resource(&mut self, complex_resource: ComplexResourceType) -> Option<ComplexResourceType> {
-        /*let basic_in = self.complex_cache.contains( &complex_resource );
-        if basic_in {
-            let position = self.complex_cache.iter().position(| x | x.eq(&complex_resource));
-            Some( self.complex_cache.remove(position.unwrap()) )
-        } else {
-            None
-        }*/
-        let mut complex_in = false;
-        for complex in self.complex_cache {
-
-        }
-        if complex_in {
-            let position = self.basic_cache.iter().position(| x | x.eq(&basic_resource));
-            Some(   self.basic_cache.remove(position.unwrap()) )
+    fn extract_complex_resource(&mut self, complex_resource: ComplexResourceType) -> Option<ComplexResource> {
+        let position_to_be_removed = self.complex_cache.iter().position( | inside_complex_resource |  self.complex_resource_extract_type(inside_complex_resource).eq(  &complex_resource ) );
+        if let Some(position_to_be_removed_option) = position_to_be_removed {
+            Some ( self.complex_cache.remove( position_to_be_removed_option ) )
         } else {
             None
         }
@@ -322,8 +305,40 @@ impl ResourcesCache {
     }
 
 
+    fn basic_resource_extract_type(&self, basic_resource : &BasicResource) -> BasicResourceType {
+        match basic_resource {
+            BasicResource::Carbon(_) => BasicResourceType::Carbon,
+            BasicResource::Hydrogen(_) => BasicResourceType::Hydrogen,
+            BasicResource::Oxygen(_) => BasicResourceType::Oxygen,
+            BasicResource::Silicon(_) => BasicResourceType::Silicon
+        }
+    }
+
+    fn complex_resource_extract_type(&self, complex_resource: &ComplexResource) -> ComplexResourceType {
+        match complex_resource {
+            ComplexResource::Diamond(_) => ComplexResourceType::Diamond,
+            ComplexResource::Water(_) => ComplexResourceType::Water,
+            ComplexResource::Life(_) => ComplexResourceType::Life,
+            ComplexResource::Robot(_) => ComplexResourceType::Robot,
+            ComplexResource::Dolphin(_) => ComplexResourceType::Dolphin,
+            ComplexResource::AIPartner(_) => ComplexResourceType::AIPartner
+        }
+    }
+
 }
 
+/*
+enum MyError {
+    #[error("when getting the two resources we expected (carbon, carbon) but we got {first}{second}.")]
+    NotDoubleCarbon {
+        first: String,
+        second: String,
+    },
+    #[error(transparent)]
+    IoError(#[from] std::io::Error),
+}
+type MyResult<T> = core::result::Result<T, MyError>;
+*/
 
 impl PlanetAI for CargonautsPlanet {
 
@@ -334,6 +349,7 @@ impl PlanetAI for CargonautsPlanet {
         combinator: &Combinator,
         msg: OrchestratorToPlanet,
     ) -> Option<PlanetToOrchestrator> {
+        /*) -> MyResult<PlanetToOrchestrator> {*/
         match msg {
             // Charge single cell at vector (position 0 because the planet is of Type C
             OrchestratorToPlanet::Sunray(sunray) => {
@@ -359,10 +375,10 @@ impl PlanetAI for CargonautsPlanet {
                         },
                         PlanetAIBehavior::Normal => {
                             // Check if the ResourceCache is active:
-                            if let Some( resourceCache ) = self.cached_basic_resource.as_mut() {
+                            if let Some(resource_cache) = self.cached_basic_resource.as_mut() {
 
                                 // Get the next element
-                                let next_predicted_element = resourceCache.predict_next_resource_request();
+                                let next_predicted_element = resource_cache.predict_next_resource_request();
 
                                 // Check if I can or can't do that
                                 if let Ok(next_predicted_element_res) = next_predicted_element {
@@ -377,7 +393,7 @@ impl PlanetAI for CargonautsPlanet {
                                             if let Ok(carbon_generation_result) = carbon_generation {
                                                 // TODO: log the successfully build
                                                 // Insert the new carbon in the cache
-                                                resourceCache.add( ResourceType::Basic( BasicResourceType::Carbon ) );
+                                                resource_cache.add_basic(  BasicResource::Carbon(carbon_generation_result)  );
                                                 
                                             } else {
                                                 // TODO: log the failure
@@ -388,16 +404,30 @@ impl PlanetAI for CargonautsPlanet {
                                             // Go for Diamond.
 
                                             // 1. Check if the cache actually has it
-                                            if resourceCache.check_diamond_creation() {
+                                            if resource_cache.check_diamond_creation() {
                                                 // Remove two Carbon from the cache
-                                                let carbon_one = resourceCache.extract_basic_resource( BasicResourceType::Carbon ).unwrap();
-                                                let carbon_two = resourceCache.extract_basic_resource( BasicResourceType::Carbon ).unwrap();
+                                                let carbon_one = resource_cache.extract_basic_resource( BasicResourceType::Carbon ).unwrap();
+                                                let carbon_two = resource_cache.extract_basic_resource( BasicResourceType::Carbon ).unwrap();
+                                                if let (BasicResource::Carbon(c1), BasicResource::Carbon(c2)) = (carbon_one, carbon_two)  {
 
-                                                match carbon_one {
-                                                    ResourceType::Basic( basic ) => { combinator.make_diamond( basic, basic, state.cell_mut(0) )},
-                                                    ResourceType::Complex( complex) => {todo!()}
+                                                    let combined_diamond = combinator.make_diamond(c1, c2, state.cell_mut(0) );
+                                                    state.charge_cell(sunray);
+
+
+                                                    if let Ok(resulted_diamond) = combined_diamond {
+                                                        // insert the diamond if it was correctly generated
+                                                        resource_cache.add_complex_resource( ComplexResource::Diamond(resulted_diamond) );
+                                                    }
+
+
+                                                    /*Err(MyError::NotDoubleCarbon {
+
+                                                        first: format!("{:?}", carbon_one),
+                                                        second: format!("{:?}", carbon_two),
+                                                    })?,*/
                                                 }
-
+                                            } else {
+                                                // TODO : log the failure
                                             }
 
                                         }
@@ -408,10 +438,6 @@ impl PlanetAI for CargonautsPlanet {
                             } else {
                                 // Nothing to do here
                             }
-
-
-                            let generated_carbon = generator.make_carbon( state.cell_mut(0) );
-                            state.charge_cell(sunray);
                             Some(PlanetToOrchestrator::SunrayAck {planet_id : state.id()})
                         }
                     }
@@ -480,10 +506,26 @@ impl PlanetAI for CargonautsPlanet {
             },
             ExplorerToPlanet::GenerateResourceRequest { explorer_id, resource } => {
                 //info!("GenerateResourceRequest received from explorer[{}]. Ask for generate {:?}", explorer_id, resource);
+
+                // log the request
+                if let Some(resource_cache) = self.cached_basic_resource.as_mut() {
+                    resource_cache.insert_requested_resource( ResourceType::Basic( resource ) )
+                }
+
                 handle_generate_resource_request(state, generator, resource)
             },
             ExplorerToPlanet::CombineResourceRequest { explorer_id, msg } => {
                 //info!("CombineResourceRequest received from explorer[{}]. Ask for craft {:?}", explorer_id, msg);
+
+
+                if let Some(resource_cache ) = self.cached_basic_resource.as_mut() {
+
+                    if let ComplexResourceRequest::Diamond(_, _) = msg {
+                        resource_cache.insert_requested_resource(ResourceType::Complex(Diamond))
+                    }
+
+                }
+
                 handle_combine_resource_request(state, combinator, msg)
             },
             ExplorerToPlanet::AvailableEnergyCellRequest { explorer_id } => {
@@ -654,6 +696,9 @@ fn handle_generate_resource_request(
                     Ok( r) => resource = Some(BasicResource::Carbon(r)),
                     Err(e) => panic!("{:?}", e) //TODO right?
                 }
+
+                // log the request
+
             },
             _ => panic!("Unexpected resource type") //TODO right?
         }
