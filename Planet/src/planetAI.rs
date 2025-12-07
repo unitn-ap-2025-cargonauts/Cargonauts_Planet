@@ -25,6 +25,32 @@ trait PlanetDefinition {
 struct CargonautsPlanet;
 
 
+fn log_message(
+    sender_id: impl Into<u64>,
+    receiver_type: ActorType,
+    receiver_id: impl Into<String>,
+    event_type: EventType,
+    channel: Channel,
+    payload: Vec::<(String, String)>,
+) {
+    let mut ppayload = Payload::new();
+
+    for tuples in payload {
+        ppayload.insert(tuples.0, tuples.1 );
+    }
+
+    LogEvent::new(
+        ActorType::Planet,
+        sender_id,
+        receiver_type,
+        receiver_id,
+        event_type,
+        channel,
+        ppayload
+    );
+}
+
+
 /// Function that create a Planet with specific arguments TODO
 #[allow(dead_code)]
 pub fn create_planet(
@@ -208,6 +234,25 @@ impl PlanetAI for CargonautsPlanet {
         // is a rocket ready to be used
         if state.has_rocket() {
             let rocket = state.take_rocket().unwrap();
+
+            log_message(
+                state.id(),
+                ActorType::SelfActor,
+                0.to_string(),
+                EventType::MessageExplorerToPlanet,
+                Channel::Info,
+                vec![( "Event description:".to_string(), "Planet received an Asteroid and has the rocket to deflect it. Proceeding".to_string() )]
+            );
+
+            log_message(
+                state.id(),
+                ActorType::SelfActor,
+                0.to_string(),
+                EventType::MessageExplorerToPlanet,
+                Channel::Debug,
+                vec![( "Debug info:".to_string(), "{{Rocket : None}}".to_string() )]
+            );
+
             Some(rocket)
         } else {
             // The rocket is not available, check if it still can be created with the use of an
@@ -217,10 +262,57 @@ impl PlanetAI for CargonautsPlanet {
                 // Create the rocket and return it
                 let created_rocket_result = state.build_rocket( charged_cell_position_result );
                 if let Ok(_) = created_rocket_result {
+
+                    log_message(
+                        state.id(),
+                        ActorType::SelfActor,
+                        0.to_string(),
+                        EventType::MessageExplorerToPlanet,
+                        Channel::Info,
+                        vec![( "Event description:".to_string(), "Planet received an Asteroid and has just created a rocket to deflect it. Proceeding".to_string() )]
+                    );
+
+                    log_message(
+                        state.id(),
+                        ActorType::SelfActor,
+                        0.to_string(),
+                        EventType::MessageExplorerToPlanet,
+                        Channel::Debug,
+                        vec![( "Debug info:".to_string(), "{{Rocket : None}}".to_string() )]
+                    );
+
                     return state.take_rocket();
+                } else {
+                    log_message(
+                        state.id(),
+                        ActorType::SelfActor,
+                        0.to_string(),
+                        EventType::MessageExplorerToPlanet,
+                        Channel::Error,
+                        vec![ ("Error details:".to_string(), "Rocket build failed even if the energy cell should be charged!".to_string() )]
+                    );
                 }
             }
+
             // Rocket can not be built
+            log_message(
+                state.id(),
+                ActorType::SelfActor,
+                0.to_string(),
+                EventType::MessageExplorerToPlanet,
+                Channel::Info,
+                vec![( "Event description:".to_string(), "Planet received an Asteroid and does not have any rocket to deflect it.".to_string() )]
+            );
+
+            log_message(
+                state.id(),
+                ActorType::SelfActor,
+                0.to_string(),
+                EventType::MessageExplorerToPlanet,
+                Channel::Debug,
+                vec![( "Debug info:".to_string(), format!("Doest the planet have the Rocket? {}", state.has_rocket()) )]
+            );
+
             None
         }
     }
@@ -230,16 +322,30 @@ impl PlanetAI for CargonautsPlanet {
     /// is received, but **only if** the planet is currently in a *stopped* state.
     ///
     /// Start messages received when planet is already running are **ignored**.
-    fn start(&mut self, _state: &PlanetState) {
-        //todo!("logging phase");
+    fn start(&mut self, state: &PlanetState) {
+        log_message(
+            state.id(),
+            ActorType::SelfActor,
+            0.to_string(),
+            EventType::InternalPlanetAction,
+            Channel::Debug,
+            vec![("Event type:".to_string(), "Planet is starting its AI".to_string())]
+        )
     }
 
 
     /// This method will be invoked when a [OrchestratorToPlanet::StopPlanetAI]
     /// is received, but **only if** the planet is currently in a *running* state.
     ///
-    fn stop(&mut self, _state: &PlanetState) {
-        //todo!("logging phase")
+    fn stop(&mut self, state: &PlanetState) {
+        log_message(
+            state.id(),
+            ActorType::SelfActor,
+            0.to_string(),
+            EventType::InternalPlanetAction,
+            Channel::Warning,
+            vec![("Event type:".to_string(), "Planet is being disabled. All messages will be ignored (except for KillPlanet, StartPlanetAI) ".to_string())]
+        )
     }
 }
 
@@ -594,7 +700,7 @@ mod tests {
 
 
     /// Send the rocket when the AI is not enabled
-    /*#[test]
+    #[test]
     fn test_rocket_with_disabled_ai() {
 
         let toy_struct = CargonautsPlanet::default();
@@ -605,6 +711,7 @@ mod tests {
 
 
         let mut planet = create_planet(
+            2,
             (orchestrator_to_planet_receiver, planet_to_orchestrator_sender ),
             explorer_to_planet_receiver,
             Box::from(toy_struct)
@@ -630,7 +737,7 @@ mod tests {
         let planet_response = planet_to_orchestrator_receiver.recv();
         assert!(matches!(planet_response, Ok(PlanetToOrchestrator::Stopped {..})));
 
-    }*/
+    }
 
 
     /// Testing the start and stop of the AI.
