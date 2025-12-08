@@ -156,7 +156,7 @@ impl PlanetAI for CargonautsPlanet {
 
         if state.has_rocket() {
 
-            let before_take_rocket = logging_wrapper::drop_planet_state_as_string(&state);
+            let before_take_rocket = logging_wrapper::drop_planet_state_as_string(state);
 
             let rocket = state.take_rocket();
 
@@ -179,7 +179,7 @@ impl PlanetAI for CargonautsPlanet {
                         vec![
                             ("Traced message:".to_string(), "Rocket successfully deflected".to_string()),
                             ("State before Rocket usage: ".to_string(), format!("{:?}",  before_take_rocket )),
-                            ("State after Rocket usage: ".to_string(), format!("{:?}", logging_wrapper::drop_planet_state_as_string(&state)) )
+                            ("State after Rocket usage: ".to_string(), format!("{:?}", logging_wrapper::drop_planet_state_as_string(state)) )
                         ]
                     );
 
@@ -193,7 +193,7 @@ impl PlanetAI for CargonautsPlanet {
                         ActorType::SelfActor,
                         0.to_string(),
                         EventType::InternalPlanetAction,
-                        vec![("Error description".to_string(), "take_rocket() function failed: returned None".to_string()), ("Planet state".to_string(), format!("{:?}", logging_wrapper::drop_planet_state_as_string(&state)) )]
+                        vec![("Error description".to_string(), "take_rocket() function failed: returned None".to_string()), ("Planet state".to_string(), format!("{:?}", logging_wrapper::drop_planet_state_as_string(state)) )]
                     );
 
                     None
@@ -231,7 +231,7 @@ impl PlanetAI for CargonautsPlanet {
                             EventType::InternalPlanetAction,
                             vec![
                                 ("Traced message:".to_string(), "Rocket successfully deflected".to_string()),
-                                ("State after Rocket creation: ".to_string(), format!("{:?}", logging_wrapper::drop_planet_state_as_string(&state)) )
+                                ("State after Rocket creation: ".to_string(), format!("{:?}", logging_wrapper::drop_planet_state_as_string(state)) )
                             ]
                         );
                         // Give ownership to the orchestrator
@@ -245,7 +245,7 @@ impl PlanetAI for CargonautsPlanet {
                             ActorType::SelfActor,
                             0.to_string(),
                             EventType::InternalPlanetAction,
-                            vec![( "Error description".to_string(), format!("build_rocket() function failed. Error reason: {}", string_error).to_string() ), ("Planet state".to_string(), logging_wrapper::drop_planet_state_as_string(&state))]
+                            vec![( "Error description".to_string(), format!("build_rocket() function failed. Error reason: {}", string_error).to_string() ), ("Planet state".to_string(), logging_wrapper::drop_planet_state_as_string(state))]
                         );
                         None
                     }
@@ -257,7 +257,7 @@ impl PlanetAI for CargonautsPlanet {
                     state.id(),
                     ActorType::SelfActor,0.to_string(),
                     EventType::InternalPlanetAction,
-                    vec![("State of planet before being destroyed".to_string(), logging_wrapper::drop_planet_state_as_string(&state))]
+                    vec![("State of planet before being destroyed".to_string(), logging_wrapper::drop_planet_state_as_string(state))]
                 );
                 None
             }
@@ -275,7 +275,7 @@ impl PlanetAI for CargonautsPlanet {
             ActorType::SelfActor,
             0.to_string(),
             EventType::InternalPlanetAction,
-    vec![ ( "State of the planet upon receipt of the StartPlanetAI message".to_string(), format!("{:?}", logging_wrapper::drop_planet_state_as_string(&state) ) ) ]
+    vec![ ( "State of the planet upon receipt of the StartPlanetAI message".to_string(), format!("{:?}", logging_wrapper::drop_planet_state_as_string(state) ) ) ]
         );
     }
 
@@ -289,7 +289,7 @@ impl PlanetAI for CargonautsPlanet {
             ActorType::SelfActor,
             0.to_string(),
             EventType::InternalPlanetAction,
-            vec![ ( "State of the planet upon receipt of the StopPlanetAi message".to_string(), format!("{:?}", logging_wrapper::drop_planet_state_as_string(&state) ) ) ]
+            vec![ ( "State of the planet upon receipt of the StopPlanetAi message".to_string(), format!("{:?}", logging_wrapper::drop_planet_state_as_string(state) ) ) ]
         );
     }
 }
@@ -1576,9 +1576,7 @@ mod logging_wrapper {
 
     pub fn drop_planet_state_as_string(planet_state: &PlanetState) -> String {
         let stringify_rocket = |option_rocket: bool| -> String  {match option_rocket { true => "Some(rocket)".to_string(), false => "None".to_string() } };
-        String::from(
-            format!("id: {}, EnergyCell: is charged? {}, rocket: {}", planet_state.id(), planet_state.cell(0).is_charged(), stringify_rocket(planet_state.has_rocket()))
-        )
+        format!("id: {}, EnergyCell: is charged? {}, rocket: {}", planet_state.id(), planet_state.cell(0).is_charged(), stringify_rocket(planet_state.has_rocket()))
     }
 
     pub fn drop_planet_state_fields_as_vector(planet_state: &PlanetState) -> Vec<(String, String)> {
@@ -1586,7 +1584,7 @@ mod logging_wrapper {
         vec!(
             ("id".to_string(), format!("{:?}", planet_state.id())),
             ("energy_cell.is_charged()".to_string(), format!("{}", planet_state.cell(0).is_charged()) ),
-            ( "rocket".to_string(), format!("{}", stringify_rocket(planet_state.has_rocket())) )
+            ( "rocket".to_string(), stringify_rocket(planet_state.has_rocket()).to_string() )
         )
     }
 
