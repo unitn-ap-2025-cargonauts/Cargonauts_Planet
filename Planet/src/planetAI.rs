@@ -204,47 +204,50 @@ impl PlanetAI for CargonautsPlanet {
         _: &Combinator
     ) -> Option<Rocket> {
 
-
-        // At this point the Rocket can be built. Check if there already
-        // is a rocket ready to be used
         if state.has_rocket() {
 
-
-            let before_take_rocket = format!("state.has_rocket() before .take_rocket(..) : {{ state.has_rocket() {} }}", state.has_rocket());
-
+            let before_take_rocket = logging_wrapper::drop_planet_state_as_string(&state);
 
             let rocket = state.take_rocket();
 
-            if let Some(taken_rocket) = rocket {
-                logging_wrapper::log_for_channel_info(
-                    state.id(),
-                    ActorType::SelfActor,
-                    0.to_string(),
-                    EventType::InternalPlanetAction,
-                    vec!["Planet received an Asteroid and has the rocket to deflect it. Proceeding".to_string()]
-                );
+            match rocket {
+                Some(taken_rocket) => {
+                    logging_wrapper::log_for_channel_info(
+                        state.id(),
+                        ActorType::SelfActor,
+                        0.to_string(),
+                        EventType::InternalPlanetAction,
+                        vec!["Planet received an Asteroid and has the rocket to deflect it.".to_string()]
+                    );
 
 
-                logging_wrapper::log_for_channel_debug(
-                    state.id(),
-                    ActorType::SelfActor,
-                    0.to_string(),
-                    EventType::InternalPlanetAction,
-                    vec![ before_take_rocket, "state.rocket: None".to_string()  ]
-                );
+                    logging_wrapper::log_for_channel_with_key_trace(
+                        state.id(),
+                        ActorType::SelfActor,
+                        0.to_string(),
+                        EventType::InternalPlanetAction,
+                        vec![
+                            ("Traced message:".to_string(), "Rocket successfully deflected".to_string()),
+                            ("State before Rocket usage: ".to_string(), format!("{:?}",  before_take_rocket )),
+                            ("State after Rocket usage: ".to_string(), format!("{:?}", logging_wrapper::drop_planet_state_as_string(&state)) )
+                        ]
+                    );
 
-                Some(taken_rocket)
-            } else {
+                    logging_wrapper::log_for_channel_debug(state.id(), ActorType::SelfActor,0.to_string(),EventType::InternalPlanetAction,  vec!["Asteroid handled".to_string()]);
+                    Some(taken_rocket)
+                },
+                None => {
+                    // Strange behavior: the .has_rocket failed! Log the error
+                    logging_wrapper::log_for_channel_with_key_error(
+                        state.id(),
+                        ActorType::SelfActor,
+                        0.to_string(),
+                        EventType::InternalPlanetAction,
+                        vec![("Error description".to_string(), "take_rocket() function failed: returned None".to_string()), ("Planet state".to_string(), format!("{:?}", logging_wrapper::drop_planet_state_as_string(&state)) )]
+                    );
 
-                logging_wrapper::log_for_channel_with_key_error(
-                    state.id(),
-                    ActorType::SelfActor,
-                    0.to_string(),
-                    EventType::InternalPlanetAction,
-                    logging_wrapper::drop_planet_state_fields_as_vector(&state)
-                );
-
-                None
+                    None
+                }
             }
         } else {
 
@@ -271,30 +274,41 @@ impl PlanetAI for CargonautsPlanet {
                         );
 
 
-                        logging_wrapper::log_for_channel_with_key_debug(
+                        logging_wrapper::log_for_channel_with_key_trace(
                             state.id(),
                             ActorType::SelfActor,
                             0.to_string(),
                             EventType::InternalPlanetAction,
-                            logging_wrapper::drop_planet_state_fields_as_vector( &state )
+                            vec![
+                                ("Traced message:".to_string(), "Rocket successfully deflected".to_string()),
+                                ("State after Rocket creation: ".to_string(), format!("{:?}", logging_wrapper::drop_planet_state_as_string(&state)) )
+                            ]
                         );
-
                         // Give ownership to the orchestrator
+                        logging_wrapper::log_for_channel_debug(state.id(), ActorType::SelfActor,0.to_string(),EventType::InternalPlanetAction,  vec!["Asteroid handled".to_string()]);
                         state.take_rocket()
                     },
                     Err(string_error) => {
                         // Technically the rocket could be built but something went wrong; logging the error
-                        logging_wrapper::log_for_channel_error(state.id(), ActorType::SelfActor, 0.to_string(), EventType::InternalPlanetAction, vec!["The build_rocket() failed!".to_string()]);
-                        let mut state_vec = vec![("Event type".to_string(), "build_rocket() failed".to_string()), ( "Received error message".to_string() , format!("{}", string_error).to_string() )];
-                        logging_wrapper::drop_planet_state_fields_as_vector(&state).iter().for_each(|(key, value)|  state_vec.push( (key.to_string(), value.to_string()) ) );
-                        logging_wrapper::log_for_channel_with_key_trace(state.id(), ActorType::SelfActor, 0.to_string(), EventType::InternalPlanetAction, state_vec);
+                        logging_wrapper::log_for_channel_with_key_error(
+                            state.id(),
+                            ActorType::SelfActor,
+                            0.to_string(),
+                            EventType::InternalPlanetAction,
+                            vec![( "Error description".to_string(), format!("build_rocket() function failed. Error reason: {}", string_error).to_string() ), ("Planet state".to_string(), logging_wrapper::drop_planet_state_as_string(&state))]
+                        );
                         None
                     }
                 }
             } else {
                 // Rocket can not be built
-                logging_wrapper::log_for_channel_info(state.id(), ActorType::SelfActor, 0.to_string(), EventType::InternalPlanetAction, vec!["Planet received an Asteroid and does not have any rocket to deflect it.".to_string()]);
-                logging_wrapper::log_for_channel_with_key_debug(state.id(), ActorType::SelfActor,0.to_string(),EventType::InternalPlanetAction,  logging_wrapper::drop_planet_state_fields_as_vector(&state) );
+                logging_wrapper::log_for_channel_info(state.id(), ActorType::SelfActor, 0.to_string(), EventType::InternalPlanetAction, vec!["Planet received an Asteroid and cannot defend itself".to_string()]);
+                logging_wrapper::log_for_channel_with_key_trace(
+                    state.id(),
+                    ActorType::SelfActor,0.to_string(),
+                    EventType::InternalPlanetAction,
+                    vec![("State of planet before being destroyed".to_string(), logging_wrapper::drop_planet_state_as_string(&state))]
+                );
                 None
             }
         }
@@ -311,8 +325,7 @@ impl PlanetAI for CargonautsPlanet {
             ActorType::SelfActor,
             0.to_string(),
             EventType::InternalPlanetAction,
-            logging_wrapper::drop_planet_state_fields_as_vector(&state)
-            //vec!["Planet is starting its AI".to_string()]
+    vec![ ( "State of the planet upon receipt of the StartPlanetAI message".to_string(), format!("{:?}", logging_wrapper::drop_planet_state_as_string(&state) ) ) ]
         );
     }
 
@@ -321,7 +334,13 @@ impl PlanetAI for CargonautsPlanet {
     /// is received, but **only if** the planet is currently in a *running* state.
     ///
     fn stop(&mut self, state: &PlanetState) {
-        logging_wrapper::log_for_channel_warning(state.id(), ActorType::SelfActor, 0.to_string(), EventType::InternalPlanetAction,  vec!["Planet is being disabled. All messages will be ignored (except for KillPlanet, StartPlanetAI) ".to_string()]);
+        logging_wrapper::log_for_channel_with_key_info(
+            state.id(),
+            ActorType::SelfActor,
+            0.to_string(),
+            EventType::InternalPlanetAction,
+            vec![ ( "State of the planet upon receipt of the StopPlanetAi message".to_string(), format!("{:?}", logging_wrapper::drop_planet_state_as_string(&state) ) ) ]
+        );
     }
 }
 
@@ -911,6 +930,52 @@ mod logging_wrapper {
     use common_game::logging::{ActorType, Channel, EventType, LogEvent, Payload};
 
 
+    /// Logs an event with a structured payload, automatically generating channel-specific keys.
+    ///
+    /// Transforms a vector of strings into a `Payload` object by creating key-value pairs where each key
+    /// is dynamically generated based on the channel type and the string's position in the vector.
+    /// The generated `LogEvent` is then emitted for logging.
+    ///
+    /// # Arguments
+    ///
+    /// * `sender_id` - The ID of the sender (converted to `u64`)
+    /// * `receiver_type` - The type of the receiver actor
+    /// * `receiver_id` - The ID of the receiver (converted to `String`)
+    /// * `event_type` - The type of event being logged
+    /// * `channel` - The communication channel that determines the key prefix (Error, Info, Debug, Warning, Trace)
+    /// * `payload` - A vector of strings to be logged as values
+    ///
+    /// # Key Generation
+    ///
+    /// For each string in the payload vector, a key is generated following the pattern:
+    /// `"<channel_name> #<index> detail:"` where:
+    /// - `<channel_name>`: One of "Error", "Info", "Debug", "Warning", or "Trace" (determined by the `channel` parameter)
+    /// - `<index>`: The zero-based position of the string within the vector
+    /// - `detail:`: A literal suffix appended to each key
+    ///
+    /// # Side Effects
+    ///
+    /// - Constructs a `Payload` object from the input strings with auto-generated keys
+    /// - Creates a `LogEvent` with `ActorType::Planet` as the sender actor type
+    /// - Emits the constructed `LogEvent` for logging
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let payload = vec!["Connection failed".to_string(), "Timeout occurred".to_string()];
+    ///
+    /// log_message(
+    ///     42,
+    ///     ActorType::Server,
+    ///     "server_001",
+    ///     EventType::Error,
+    ///     Channel::Error,
+    ///     payload
+    /// );
+    /// // Logs with keys:
+    /// // "Error #0 detail:" => "Connection failed"
+    /// // "Error #1 detail:" => "Timeout occurred"
+    /// ```
     fn log_message(
         sender_id: impl Into<u64>,
         receiver_type: ActorType,
@@ -946,6 +1011,43 @@ mod logging_wrapper {
         ).emit();
     }
 
+    /// Logs an event with a structured key-value payload.
+    ///
+    /// Creates a `LogEvent` from the provided parameters and emits it for logging.
+    /// Transforms a vector of key-value pairs into a `Payload` object before emission.
+    ///
+    /// # Arguments
+    ///
+    /// * `sender_id` - The ID of the sender (converted to `u64`)
+    /// * `receiver_type` - The type of the receiver actor
+    /// * `receiver_id` - The ID of the receiver (converted to `String`)
+    /// * `event_type` - The type of event being logged
+    /// * `channel` - The communication channel through which the event is transmitted
+    /// * `payload` - A vector of tuples containing key-value pairs where both key and value are strings
+    ///
+    /// # Side Effects
+    ///
+    /// - Constructs a `Payload` object from the input key-value pairs
+    /// - Creates a `LogEvent` with `ActorType::Planet` as the sender actor type
+    /// - Emits the constructed `LogEvent` for logging
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let payload = vec![
+    ///     ("event_name".to_string(), "user_login".to_string()),
+    ///     ("timestamp".to_string(), "2024-01-15".to_string()),
+    /// ];
+    ///
+    /// log_message_with_key(
+    ///     123,
+    ///     ActorType::User,
+    ///     "user_456",
+    ///     EventType::Login,
+    ///     Channel::Auth,
+    ///     payload
+    /// );
+    /// ```
     fn log_message_with_key(
         sender_id: impl Into<u64>,
         receiver_type: ActorType,
@@ -974,9 +1076,25 @@ mod logging_wrapper {
         ).emit();
     }
 
-    /*
-        Macro to build the specialize loggin for each channel
-    */
+    /// Macro that generates specialized logging functions for each communication channel.
+    ///
+    /// This macro creates two variants of logging functions for each channel type provided:
+    /// 1. `log_for_channel_<name>()` - Logs with auto-generated channel-specific keys
+    /// 2. `log_for_channel_with_key_<name>()` - Logs with custom key-value pairs
+    ///
+    /// # Arguments
+    ///
+    /// * `$Enum` - The enum variant of the `Channel` type (e.g., `Error`, `Info`, `Debug`, `Warning`, `Trace`)
+    /// * `$name` - A string literal representing the channel name (used in the generated function name in lowercase)
+    ///
+    /// // This generates:
+    /// // - log_for_channel_error(sender_id, receiver_type, receiver_id, event_type, payload)
+    /// // - log_for_channel_with_key_error(sender_id, receiver_type, receiver_id, event_type, payload)
+    /// // - log_for_channel_info(sender_id, receiver_type, receiver_id, event_type, payload)
+    /// // - log_for_channel_with_key_info(sender_id, receiver_type, receiver_id, event_type, payload)
+    /// // - log_for_channel_debug(sender_id, receiver_type, receiver_id, event_type, payload)
+    /// // - log_for_channel_with_key_debug(sender_id, receiver_type, receiver_id, event_type, payload)
+    /// ```
     macro_rules! specialize_channel_func {
         ( $( $Enum:ident => $name:literal ),* ) => {
             $(
@@ -1023,31 +1141,42 @@ mod logging_wrapper {
     // Define scope of the macro
     specialize_channel_func!(
         Error => "Error",
-        Warning => "Warning",
+        //Warning => "Warning",
         Info => "Info",
         Debug => "Debug",
         Trace => "Trace"
     );
 
-
-    pub fn drop_planet_state_fields_as_vector(planet_state: &PlanetState) -> Vec<(String, String)> {
+    pub fn drop_planet_state_as_string(planet_state: &PlanetState) -> String {
         let stringify_rocket = |option_rocket: bool| -> String  {match option_rocket { true => "Some(rocket)".to_string(), false => "None".to_string() } };
-        vec!(
-            ("id".to_string(), format!("{:?}", planet_state.id())),
-            ("energy_cell".to_string(), format!("Vec: {{ {} }}", planet_state.cell(0).is_charged()) ),
-            ( "rocket".to_string(), format!("{}", stringify_rocket(planet_state.has_rocket())) )
+        String::from(
+            format!("id: {}, EnergyCell: is charged? {}, rocket: {}", planet_state.id(), planet_state.cell(0).is_charged(), stringify_rocket(planet_state.has_rocket()))
         )
     }
 
-    pub fn drop_energy_cell_state_fields_as_vector(planet_state: &PlanetState) -> Vec<(String, String)> {
+/*    pub fn drop_planet_state_fields_as_vector(planet_state: &PlanetState) -> Vec<(String, String)> {
+        let stringify_rocket = |option_rocket: bool| -> String  {match option_rocket { true => "Some(rocket)".to_string(), false => "None".to_string() } };
+        vec!(
+            ("id".to_string(), format!("{:?}", planet_state.id())),
+            ("energy_cell".to_string(), format!("charged? {} }}", planet_state.cell(0).is_charged()) ),
+            ( "rocket".to_string(), format!("{}", stringify_rocket(planet_state.has_rocket())) )
+        )
+    }*/
+
+
+/*    pub fn drop_energy_cell_state_fields_as_vector(planet_state: &PlanetState) -> Vec<(String, String)> {
         vec![drop_planet_state_fields_as_vector(planet_state).remove(1)]
     }
 
+
+
     pub fn drop_energy_rocket_state_fields_as_vector(planet_state: &PlanetState) -> Vec<(String, String)> {
         vec![drop_planet_state_fields_as_vector(planet_state).remove(2)]
-    }
+    }*/
 
-    pub fn append_info_to_state(state: &PlanetState, input_vec: Vec<(String, String)>) -> Vec<(String, String)> {
+
+
+    /*pub fn append_info_to_state(state: &PlanetState, input_vec: Vec<(String, String)>) -> Vec<(String, String)> {
 
         let mut vec = Vec::<(String, String)>::new();
 
@@ -1064,7 +1193,6 @@ mod logging_wrapper {
         } );
 
         vec
-
-    }
+    }*/
 
 }
