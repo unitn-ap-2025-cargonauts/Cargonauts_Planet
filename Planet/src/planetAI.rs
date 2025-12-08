@@ -1039,12 +1039,32 @@ mod logging_wrapper {
         )
     }
 
-    pub fn _drop_energy_cell_state_fields_as_vector(planet_state: &PlanetState) -> Vec<(String, String)> {
+    pub fn drop_energy_cell_state_fields_as_vector(planet_state: &PlanetState) -> Vec<(String, String)> {
         vec![drop_planet_state_fields_as_vector(planet_state).remove(1)]
     }
 
-    pub fn _drop_energy_rocket_state_fields_as_vector(planet_state: &PlanetState) -> Vec<(String, String)> {
+    pub fn drop_energy_rocket_state_fields_as_vector(planet_state: &PlanetState) -> Vec<(String, String)> {
         vec![drop_planet_state_fields_as_vector(planet_state).remove(2)]
+    }
+
+    pub fn append_info_to_state(state: &PlanetState, input_vec: Vec<(String, String)>) -> Vec<(String, String)> {
+
+        let mut vec = Vec::<(String, String)>::new();
+
+        input_vec.iter().for_each(   |(key, value)|   {
+            vec.push((key.to_string(), value.to_string()));
+        } );
+
+
+        // Load the planet state
+        let planet_state = drop_planet_state_fields_as_vector( state);
+
+        planet_state.iter().for_each(|(key, value)| {
+            vec.push( (key.to_string(), value.to_string()) );
+        } );
+
+        vec
+
     }
 
 }
