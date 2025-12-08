@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["create_planet","handle_combine_resource_request","handle_energy_cell_request","handle_generate_resource_request","handle_supported_combination_request","handle_supported_resource_request","log_message"],"macro":["generate_complex_resource"],"struct":["CargonautsPlanet"]};
