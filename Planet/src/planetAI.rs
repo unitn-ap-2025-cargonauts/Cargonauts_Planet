@@ -519,8 +519,9 @@ mod tests {
     use std::collections::HashSet;
     use std::thread;
     use common_game::components::asteroid::Asteroid;
+    use common_game::components::planet::Planet;
     use common_game::components::sunray::Sunray;
-    use common_game::components::resource::{BasicResource, BasicResourceType, ComplexResource, ComplexResourceRequest, ComplexResourceType, Carbon};
+    use common_game::components::resource::{BasicResource, BasicResourceType, ComplexResource, ComplexResourceRequest, ComplexResourceType};
     use common_game::protocols::messages::{ExplorerToPlanet, OrchestratorToPlanet, PlanetToExplorer, PlanetToOrchestrator};
     use crossbeam_channel::{unbounded, Receiver, Sender};
     use crate::planetAI::{handle_energy_cell_request, handle_supported_combination_request, handle_supported_resource_request, create_planet};
@@ -554,6 +555,7 @@ mod tests {
         from_exp_tx: Sender<ExplorerToPlanet>,
         to_exp_tx: Sender<PlanetToExplorer>,
         to_exp_rx: Receiver<PlanetToExplorer>,
+        planet: Arc<Mutex<Planet>>,
         _thread: thread::JoinHandle<()>,
     }
 
@@ -564,15 +566,17 @@ mod tests {
             let (to_exp_tx, to_exp_rx) = planet_to_explorer_channel_creator();
             let (from_exp_tx, from_exp_rx) = explorer_to_planet_channels_creator();
 
-            let mut planet = create_planet(
+            let planet = Arc::new(Mutex::new(create_planet(
                 from_orch_rx,
                 to_orch_tx,
                 from_exp_rx,
                 2,
-            );
+            )));
+
+            let planet_for_thread = Arc::clone(&planet);
 
             let handle = thread::spawn(move || {
-                let _ = planet.run();
+                let _ = planet_for_thread.lock().unwrap().run();
             });
 
             Self {
@@ -581,6 +585,7 @@ mod tests {
                 from_exp_tx,
                 to_exp_tx,
                 to_exp_rx,
+                planet,
                 _thread: handle,
             }
         }
@@ -595,7 +600,7 @@ mod tests {
             let _ = self.to_orch_rx.recv();
         }
 
-        fn attach_explorer(&self, id: u32, tx: Sender<PlanetToExplorer>) {
+        fn incoming_explorer(&self, id: u32, tx: Sender<PlanetToExplorer>) {
             let msg = OrchestratorToPlanet::IncomingExplorerRequest { explorer_id: id, new_mpsc_sender: tx };
             let _ = self.from_orch_tx.send(msg);
             let _ = self.to_orch_rx.recv();
@@ -774,17 +779,8 @@ mod tests {
 
     #[test]
     fn test_unit_handle_supported_resource_request() {
-        let (to_orchestrator_tx, _to_orchestrator_rx) = planet_to_orchestrator_channels_creator(); // Planet -> Orchestrator
-        let (_from_orchestrator_tx, from_orchestrator_rx) = orchestrator_to_planet_channels_creator(); // Orchestrator -> Planet
-        let (_to_explorer_tx, _to_explorer_rx) = planet_to_explorer_channel_creator(); // Planet -> Explorer
-        let (_from_explorer_tx, from_explorer_rx) = explorer_to_planet_channels_creator(); // Explorer -> Planet
-
-        let planet = create_planet(
-            from_orchestrator_rx,
-            to_orchestrator_tx,
-            from_explorer_rx,
-            2,
-        );
+        let h = TestHarness::new();
+        let planet = h.planet.lock().unwrap();
 
         let result = handle_supported_resource_request(planet.generator());
 
@@ -801,17 +797,8 @@ mod tests {
 
     #[test]
     fn test_unit_handle_supported_combination_request() {
-        let (to_orchestrator_tx, _to_orchestrator_rx) = planet_to_orchestrator_channels_creator(); // Planet -> Orchestrator
-        let (_from_orchestrator_tx, from_orchestrator_rx) = orchestrator_to_planet_channels_creator(); // Orchestrator -> Planet
-        let (_to_explorer_tx, _to_explorer_rx) = planet_to_explorer_channel_creator(); // Planet -> Explorer
-        let (_from_explorer_tx, from_explorer_rx) = explorer_to_planet_channels_creator(); // Explorer -> Planet
-
-        let planet = create_planet(
-            from_orchestrator_rx,
-            to_orchestrator_tx,
-            from_explorer_rx,
-            2,
-        );
+        let h = TestHarness::new();
+        let planet = h.planet.lock().unwrap();
 
         let result = handle_supported_combination_request(planet.combinator());
 
@@ -834,58 +821,12 @@ mod tests {
     }
 
     #[test]
-    fn test_integration_generate_resource_carbon_with_energy() {
-        let (to_orchestrator_tx, to_orchestrator_rx) = planet_to_orchestrator_channels_creator(); // Planet -> Orchestrator
-        let (from_orchestrator_tx, from_orchestrator_rx) = orchestrator_to_planet_channels_creator(); // Orchestrator -> Planet
-        let (to_explorer_tx, to_explorer_rx) = planet_to_explorer_channel_creator(); // Planet -> Explorer
-        let (from_explorer_tx, from_explorer_rx) = explorer_to_planet_channels_creator(); // Explorer -> Planet
-
-        let mut planet = create_planet(
-            from_orchestrator_rx,
-            to_orchestrator_tx,
-            from_explorer_rx,
-            2,
-        );
-
-        let _ = thread::spawn(move || {
-            let _ = planet.run();
-        });
-
-        let _ = from_orchestrator_tx.send(OrchestratorToPlanet::StartPlanetAI);
-        let _ = to_orchestrator_rx.recv();
-        let _ = from_orchestrator_tx.send(OrchestratorToPlanet::Sunray(Sunray::default()));
-        let _ = to_orchestrator_rx.recv();
-        let incoming_explorer = OrchestratorToPlanet::IncomingExplorerRequest {
-            explorer_id: 1,
-            new_mpsc_sender: to_explorer_tx,
-        };
-        let _ = from_orchestrator_tx.send(incoming_explorer);
-        let _ = to_orchestrator_rx.recv();
-        let explorer_msg = ExplorerToPlanet::GenerateResourceRequest {
-            explorer_id: 1,
-            resource: BasicResourceType::Carbon,
-        };
-        let _ = from_explorer_tx.send(explorer_msg);
-
-        let result = to_explorer_rx.recv().unwrap();
-
-        if let PlanetToExplorer::GenerateResourceResponse { resource } = result {
-            match resource {
-                Some(BasicResource::Carbon(_)) => {assert!(true)}
-                _ => panic!("Expected Some(Carbon)"),
-            }
-        } else {
-            panic!("Expected GenerateResourceResponse");
-        }
-    }
-
-    #[test]
-    fn test_generate_carbon_with_energy() {
+    fn test_integration_generate_carbon_with_energy() {
         let h = TestHarness::new();
 
         h.start();
         h.sunray();
-        h.attach_explorer(1, h.to_exp_tx.clone());
+        h.incoming_explorer(1, h.to_exp_tx.clone());
 
         h.send_explorer(ExplorerToPlanet::GenerateResourceRequest {
             explorer_id: 1,
@@ -901,11 +842,11 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_unsupported_resource() {
+    fn test_integration_generate_unsupported_resource() {
         let h = TestHarness::new();
 
         h.start();
-        h.attach_explorer(1, h.to_exp_tx.clone());
+        h.incoming_explorer(1, h.to_exp_tx.clone());
 
         h.send_explorer(ExplorerToPlanet::GenerateResourceRequest {
             explorer_id: 1,
@@ -920,11 +861,11 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_carbon_without_energy() {
+    fn test_integration_generate_carbon_without_energy() {
         let h = TestHarness::new();
 
         h.start();
-        h.attach_explorer(1, h.to_exp_tx.clone());
+        h.incoming_explorer(1, h.to_exp_tx.clone());
 
         h.send_explorer(ExplorerToPlanet::GenerateResourceRequest {
             explorer_id: 1,
@@ -939,10 +880,10 @@ mod tests {
     }
 
     #[test]
-    fn test_combine_carbon_with_energy() {
+    fn test_integration_combine_carbon_with_energy() {
         let h = TestHarness::new();
         h.start();
-        h.attach_explorer(1, h.to_exp_tx.clone());
+        h.incoming_explorer(1, h.to_exp_tx.clone());
 
         let mut bag = Vec::new();
 
@@ -975,10 +916,10 @@ mod tests {
     }
 
     #[test]
-    fn test_combine_carbon_without_energy() {
+    fn test_integration_combine_carbon_without_energy() {
         let h = TestHarness::new();
         h.start();
-        h.attach_explorer(1, h.to_exp_tx.clone());
+        h.incoming_explorer(1, h.to_exp_tx.clone());
 
         let mut bag = Vec::new();
 
@@ -1014,289 +955,31 @@ mod tests {
     }
 
     #[test]
-    fn test_integration_generate_resource_carbon_without_energy() {
-        let (to_orchestrator_tx, to_orchestrator_rx) = planet_to_orchestrator_channels_creator(); // Planet -> Orchestrator
-        let (from_orchestrator_tx, from_orchestrator_rx) = orchestrator_to_planet_channels_creator(); // Orchestrator -> Planet
-        let (to_explorer_tx, to_explorer_rx) = planet_to_explorer_channel_creator(); // Planet -> Explorer
-        let (from_explorer_tx, from_explorer_rx) = explorer_to_planet_channels_creator(); // Explorer -> Planet
-
-        let mut planet = create_planet(
-            from_orchestrator_rx,
-            to_orchestrator_tx,
-            from_explorer_rx,
-            2,
-        );
-
-        let _ = thread::spawn(move || {
-            let _ = planet.run();
-        });
-
-        let _ = from_orchestrator_tx.send(OrchestratorToPlanet::StartPlanetAI);
-        let _ = to_orchestrator_rx.recv();
-        let incoming_explorer = OrchestratorToPlanet::IncomingExplorerRequest {
-            explorer_id: 1,
-            new_mpsc_sender: to_explorer_tx,
-        };
-        let _ = from_orchestrator_tx.send(incoming_explorer);
-        let _ = to_orchestrator_rx.recv();
-        let explorer_msg = ExplorerToPlanet::GenerateResourceRequest {
-            explorer_id: 1,
-            resource: BasicResourceType::Carbon,
-        };
-        let _ = from_explorer_tx.send(explorer_msg);
-
-        let result = to_explorer_rx.recv().unwrap();
-
-        if let PlanetToExplorer::GenerateResourceResponse { resource } = result {
-            assert!(resource.is_none());
-        } else {
-            panic!("Expected GenerateResourceResponse");
-        }
-    }
-
-    #[test]
-    fn test_integration_generate_unsupported_resource() {
-        env_logger::init();
-
-        let (to_orchestrator_tx, to_orchestrator_rx) = planet_to_orchestrator_channels_creator(); // Planet -> Orchestrator
-        let (from_orchestrator_tx, from_orchestrator_rx) = orchestrator_to_planet_channels_creator(); // Orchestrator -> Planet
-        let (to_explorer_tx, to_explorer_rx) = planet_to_explorer_channel_creator(); // Planet -> Explorer
-        let (from_explorer_tx, from_explorer_rx) = explorer_to_planet_channels_creator(); // Explorer -> Planet
-
-        let mut planet = create_planet(
-            from_orchestrator_rx,
-            to_orchestrator_tx,
-            from_explorer_rx,
-            2,
-        );
-
-        let _ = thread::spawn(move || {
-            let _ = planet.run();
-        });
-
-        let _ = from_orchestrator_tx.send(OrchestratorToPlanet::StartPlanetAI);
-        let _ = to_orchestrator_rx.recv();
-        let _ = from_orchestrator_tx.send(OrchestratorToPlanet::Sunray(Sunray::default()));
-        let _ = to_orchestrator_rx.recv();
-        let incoming_explorer = OrchestratorToPlanet::IncomingExplorerRequest {
-            explorer_id: 1,
-            new_mpsc_sender: to_explorer_tx,
-        };
-        let _ = from_orchestrator_tx.send(incoming_explorer);
-        let _ = to_orchestrator_rx.recv();
-        let explorer_msg = ExplorerToPlanet::GenerateResourceRequest {
-            explorer_id: 1,
-            resource: BasicResourceType::Oxygen,
-        };
-        let _ = from_explorer_tx.send(explorer_msg);
-
-        let result = to_explorer_rx.recv().unwrap();
-        if let PlanetToExplorer::GenerateResourceResponse { resource } = result {
-            assert!(resource.is_none());
-        } else {
-            panic!("Expected GenerateResourceResponse");
-        }
-    }
-
-    #[test]
-    fn test_integration_combine_resource_carbon_with_energy() {
-        let (to_orchestrator_tx, to_orchestrator_rx) = planet_to_orchestrator_channels_creator(); // Planet -> Orchestrator
-        let (from_orchestrator_tx, from_orchestrator_rx) = orchestrator_to_planet_channels_creator(); // Orchestrator -> Planet
-        let (to_explorer_tx, to_explorer_rx) = planet_to_explorer_channel_creator(); // Planet -> Explorer
-        let (from_explorer_tx, from_explorer_rx) = explorer_to_planet_channels_creator(); // Explorer -> Planet
-
-        let mut planet = create_planet(
-            from_orchestrator_rx,
-            to_orchestrator_tx,
-            from_explorer_rx,
-            2,
-        );
-
-        let _ = thread::spawn(move || {
-            let _ = planet.run();
-        });
-
-        let mut bag: Vec<Carbon> = Vec::new();
-
-        let _ = from_orchestrator_tx.send(OrchestratorToPlanet::StartPlanetAI);
-        let _ = to_orchestrator_rx.recv();
-
-        let incoming_explorer = OrchestratorToPlanet::IncomingExplorerRequest {
-            explorer_id: 1,
-            new_mpsc_sender: to_explorer_tx.clone(),
-        };
-        let _ = from_orchestrator_tx.send(incoming_explorer);
-        let _ = to_orchestrator_rx.recv();
-
-        for _ in 0..2{
-            let _ = from_orchestrator_tx.send(OrchestratorToPlanet::Sunray(Sunray::default()));
-            let _ = to_orchestrator_rx.recv();
-            let explorer_msg = ExplorerToPlanet::GenerateResourceRequest {
-                explorer_id: 1,
-                resource: BasicResourceType::Carbon,
-            };
-            let _ = from_explorer_tx.send(explorer_msg);
-
-            let result = to_explorer_rx.recv().unwrap();
-
-            if let PlanetToExplorer::GenerateResourceResponse { resource } = result {
-                match resource {
-                    Some(BasicResource::Carbon(c)) => {bag.push(c)}
-                    _ => panic!("Expected Some(Carbon)"),
-                };
-            } else {
-                panic!("Expected GenerateResourceResponse");
-            }
-        }
-
-        let _ = from_orchestrator_tx.send(OrchestratorToPlanet::Sunray(Sunray::default()));
-        let _ = to_orchestrator_rx.recv();
-        let explorer_msg = ExplorerToPlanet::CombineResourceRequest {
-            explorer_id: 1,
-            msg: ComplexResourceRequest::Diamond(bag.pop().unwrap(), bag.pop().unwrap()),
-        };
-        let _ = from_explorer_tx.send(explorer_msg);
-
-        let result = to_explorer_rx.recv().unwrap();
-
-        if let PlanetToExplorer::CombineResourceResponse { complex_response } = result {
-            match complex_response {
-                //Some(ComplexResource::Diamond(_)) => {}
-                //_ => panic!("Expected Some(Carbon)"),
-                Ok(resource) => {
-                    match resource {
-                        ComplexResource::Diamond(_) => {assert!(true)}
-                        _ => panic!("Expected ComplexResource::Diamond"),
-                    };
-                }
-                Err(_) => {panic!("Expected ComplexResource::Diamond")}
-            };
-        } else {
-            panic!("Expected CombineResourceResponse");
-        }
-    }
-
-    #[test]
-    fn test_integration_combine_resource_carbon_without_energy() {
-        let (to_orchestrator_tx, to_orchestrator_rx) = planet_to_orchestrator_channels_creator(); // Planet -> Orchestrator
-        let (from_orchestrator_tx, from_orchestrator_rx) = orchestrator_to_planet_channels_creator(); // Orchestrator -> Planet
-        let (to_explorer_tx, to_explorer_rx) = planet_to_explorer_channel_creator(); // Planet -> Explorer
-        let (from_explorer_tx, from_explorer_rx) = explorer_to_planet_channels_creator(); // Explorer -> Planet
-
-        let mut planet = create_planet(
-            from_orchestrator_rx,
-            to_orchestrator_tx,
-            from_explorer_rx,
-            2,
-        );
-
-        let _ = thread::spawn(move || {
-            let _ = planet.run();
-        });
-
-        let mut bag: Vec<Carbon> = Vec::new();
-
-        let _ = from_orchestrator_tx.send(OrchestratorToPlanet::StartPlanetAI);
-        let _ = to_orchestrator_rx.recv();
-
-        let incoming_explorer = OrchestratorToPlanet::IncomingExplorerRequest {
-            explorer_id: 1,
-            new_mpsc_sender: to_explorer_tx.clone(),
-        };
-        let _ = from_orchestrator_tx.send(incoming_explorer);
-        let _ = to_orchestrator_rx.recv();
-
-        for _ in 0..2{
-            let _ = from_orchestrator_tx.send(OrchestratorToPlanet::Sunray(Sunray::default()));
-            let _ = to_orchestrator_rx.recv();
-            let explorer_msg = ExplorerToPlanet::GenerateResourceRequest {
-                explorer_id: 1,
-                resource: BasicResourceType::Carbon,
-            };
-            let _ = from_explorer_tx.send(explorer_msg);
-
-            let result = to_explorer_rx.recv().unwrap();
-
-            if let PlanetToExplorer::GenerateResourceResponse { resource } = result {
-                match resource {
-                    Some(BasicResource::Carbon(c)) => {bag.push(c)}
-                    _ => panic!("Expected Some(Carbon)"),
-                };
-            } else {
-                panic!("Expected GenerateResourceResponse");
-            }
-        }
-        let explorer_msg = ExplorerToPlanet::CombineResourceRequest {
-            explorer_id: 1,
-            msg: ComplexResourceRequest::Diamond(bag.pop().unwrap(), bag.pop().unwrap()),
-        };
-        let _ = from_explorer_tx.send(explorer_msg);
-
-        let result = to_explorer_rx.recv().unwrap();
-
-        match result {
-            PlanetToExplorer::CombineResourceResponse { complex_response } => {
-                match complex_response {
-                    Ok(_) => {panic!("Expected Err()")}
-                    Err(_) => {assert!(true)}
-                }
-            }
-            _ => panic!("Expected CombineResourceResponse"),
-        };
-    }
-
-    #[test]
     fn test_integration_handle_orchestrator_msg_sunray_and_handle_energy_cell_request_charge() {
-        let (to_orchestrator_tx, _to_orchestrator_rx) = planet_to_orchestrator_channels_creator(); // Planet -> Orchestrator
-        let (from_orchestrator_tx, from_orchestrator_rx) = orchestrator_to_planet_channels_creator(); // Orchestrator -> Planet
-        let (_to_explorer_tx, _to_explorer_rx) = planet_to_explorer_channel_creator(); // Planet -> Explorer
-        let (_from_explorer_tx, from_explorer_rx) = explorer_to_planet_channels_creator(); // Explorer -> Planet
+        let h = TestHarness::new();
 
-        let planet = Arc::new(Mutex::new(create_planet(
-            from_orchestrator_rx,
-            to_orchestrator_tx,
-            from_explorer_rx,
-            2,
-        )));
+        h.start();
+        h.sunray();
+        h.incoming_explorer(1, h.to_exp_tx.clone());
 
-        let planet_for_thread = Arc::clone(&planet);
+        h.from_exp_tx
+            .send(ExplorerToPlanet::AvailableEnergyCellRequest { explorer_id: 1 })
+            .unwrap();
 
-        let thread_var = thread::spawn(move || {
-            let _ = planet_for_thread.lock().unwrap().run();
-        });
+        let response = h.to_exp_rx.recv().unwrap();
 
-        let _ = from_orchestrator_tx.send(OrchestratorToPlanet::StartPlanetAI);
-        let _ = from_orchestrator_tx.send(OrchestratorToPlanet::Sunray(Sunray::default()));
-        let _ = from_orchestrator_tx.send(OrchestratorToPlanet::StopPlanetAI);
-
-        drop(from_orchestrator_tx);
-        let _ = thread_var.join();
-
-        let planet_guard = planet.lock().unwrap();
-        let result = handle_energy_cell_request(planet_guard.state());
-
-        assert!(result.is_some());
-
-        if let Some(PlanetToExplorer::AvailableEnergyCellResponse { available_cells }) = result {
-            assert_eq!(available_cells, 1);
-        } else {
-            panic!("Expected AvailableEnergyCellResponse");
+        match response {
+            PlanetToExplorer::AvailableEnergyCellResponse { available_cells } => {
+                assert_eq!(available_cells, 1);
+            }
+            _ => panic!("Expected AvailableEnergyCellResponse"),
         }
     }
 
     #[test]
     fn test_unit_handle_energy_cell_request_discharge() {
-        let (to_orchestrator_tx, _to_orchestrator_rx) = planet_to_orchestrator_channels_creator(); // Planet -> Orchestrator
-        let (_from_orchestrator_tx, from_orchestrator_rx) = orchestrator_to_planet_channels_creator(); // Orchestrator -> Planet
-        let (_to_explorer_tx, _to_explorer_rx) = planet_to_explorer_channel_creator(); // Planet -> Explorer
-        let (_from_explorer_tx, from_explorer_rx) = explorer_to_planet_channels_creator(); // Explorer -> Planet
-
-        let planet = create_planet(
-            from_orchestrator_rx,
-            to_orchestrator_tx,
-            from_explorer_rx,
-            2,
-        );
+        let h = TestHarness::new();
+        let planet = h.planet.lock().unwrap();
 
         let result = handle_energy_cell_request(planet.state());
 
