@@ -12,8 +12,9 @@ use common_game::components::resource::*;
 use common_game::components::rocket::Rocket;
 use common_game::logging::{ActorType, Channel, EventType, LogEvent, Payload};
 use common_game::protocols::messages::*;
-
+use logging_wrapper::*;
 use paste::paste;
+use log::log;
 
 #[allow(dead_code)]
 trait PlanetDefinition {
@@ -47,7 +48,7 @@ fn log_message(
         event_type,
         channel,
         payload_object
-    );
+    ).emit();
 }
 
 
@@ -295,23 +296,9 @@ impl PlanetAI for CargonautsPlanet {
             }
 
             // Rocket can not be built
-            log_message(
-                state.id(),
-                ActorType::SelfActor,
-                0.to_string(),
-                EventType::MessageExplorerToPlanet,
-                Channel::Info,
-                vec![( "Event description:".to_string(), "Planet received an Asteroid and does not have any rocket to deflect it.".to_string() )]
-            );
+            logging_wrapper::log_for_channel_info(state.id(), ActorType::SelfActor, 0.to_string(), EventType::InternalPlanetAction, vec!["Planet received an Asteroid and does not have any rocket to deflect it.".to_string()]);
 
-            log_message(
-                state.id(),
-                ActorType::SelfActor,
-                0.to_string(),
-                EventType::MessageExplorerToPlanet,
-                Channel::Debug,
-                vec![( "Debug info:".to_string(), format!("Doest the planet have the Rocket? {}", state.has_rocket()) )]
-            );
+            logging_wrapper::log_for_channel_debug(state.id(), ActorType::SelfActor,0.to_string(),EventType::InternalPlanetAction, vec![format!("Planet.has_rocket()? {}", state.has_rocket())]);
 
             None
         }
@@ -323,14 +310,13 @@ impl PlanetAI for CargonautsPlanet {
     ///
     /// Start messages received when planet is already running are **ignored**.
     fn start(&mut self, state: &PlanetState) {
-        log_message(
+        logging_wrapper::log_for_channel_debug(
             state.id(),
             ActorType::SelfActor,
             0.to_string(),
             EventType::InternalPlanetAction,
-            Channel::Debug,
-            vec![("Event type:".to_string(), "Planet is starting its AI".to_string())]
-        )
+            vec!["Planet is starting its AI".to_string()]
+        );
     }
 
 
@@ -338,14 +324,29 @@ impl PlanetAI for CargonautsPlanet {
     /// is received, but **only if** the planet is currently in a *running* state.
     ///
     fn stop(&mut self, state: &PlanetState) {
-        log_message(
+/*        log_message(
             state.id(),
             ActorType::SelfActor,
             0.to_string(),
             EventType::InternalPlanetAction,
             Channel::Warning,
             vec![("Event type:".to_string(), "Planet is being disabled. All messages will be ignored (except for KillPlanet, StartPlanetAI) ".to_string())]
-        )
+        )*/
+
+        /*let mut payload_to_be_used = Payload::new();
+        payload_to_be_used.insert("Event type:".to_string(), "Planet is being disabled. All messages will be ignored (except for KillPlanet, StartPlanetAI)".to_string());
+        LogEvent::new(
+            ActorType::Planet,
+            state.id(),
+            ActorType::SelfActor,
+            "",
+            EventType::InternalPlanetAction,
+            Channel::Error,
+            payload_to_be_used,
+        ).emit();*/
+        logging_wrapper::log_for_channel_warning(state.id(), ActorType::SelfActor, 0.to_string(), EventType::InternalPlanetAction,  vec!["Planet is being disabled. All messages will be ignored (except for KillPlanet, StartPlanetAI) ".to_string()]);
+
+
     }
 }
 
@@ -589,13 +590,14 @@ fn handle_energy_cell_request(
 mod tests {
     use std::sync::{Arc, Mutex};
     use std::collections::HashSet;
-    use std::thread;
+    use std::{thread};
     use common_game::components::asteroid::Asteroid;
     use common_game::components::sunray::Sunray;
     use common_game::components::resource::{BasicResourceType, ComplexResourceType};
     use common_game::protocols::messages::{ExplorerToPlanet, OrchestratorToPlanet, PlanetToExplorer, PlanetToOrchestrator};
     use crossbeam_channel::{unbounded, Receiver, Sender};
     use crate::planetAI::{handle_energy_cell_request, handle_supported_combination_request, handle_supported_resource_request, create_planet};
+
 
 
     fn planet_to_explorer_channel_creator() -> (Sender<PlanetToExplorer>, Receiver<PlanetToExplorer>) {
@@ -625,6 +627,8 @@ mod tests {
     /// the [Asteroid] destroys the [Planet].
     #[test]
     fn asteroid_with_uncharged_cell() {
+
+        env_logger::init();
 
         // ----------------- Channels and planet creation
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
@@ -703,6 +707,8 @@ mod tests {
     #[test]
     fn test_rocket_with_disabled_ai() {
 
+        //env_logger::builder()::
+
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
         let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
 
@@ -743,6 +749,7 @@ mod tests {
     /// Testing the start and stop of the AI.
     #[test]
     fn test_start_and_stop_planet_ai() {
+
 
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
         let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
@@ -908,4 +915,83 @@ mod tests {
             panic!("Expected SupportedCombinationResponse variant");
         }
     }
+}
+
+/// Wrapper fot the loggin module defined in the common crate.
+mod logging_wrapper {
+    use common_game::logging::{ActorType, Channel, EventType, LogEvent, Payload};
+
+    fn log_message(
+        sender_id: impl Into<u64>,
+        receiver_type: ActorType,
+        receiver_id: impl Into<String>,
+        event_type: EventType,
+        channel: Channel,
+        payload: Vec<String>,
+    ) {
+
+        // Create the planet object
+        let mut payload_object = Payload::new();
+
+        payload.iter().enumerate().map(|(index, inserted_string)| {
+            match channel {
+                Channel::Error => (format!("Error #{} detail:", index), inserted_string),
+                Channel::Info => (format!("Info #{} detail:", index), inserted_string),
+                Channel::Debug => (format!("Debug #{} detail:", index), inserted_string),
+                Channel::Warning => (format!("Warning #{} detail:", index), inserted_string),
+                Channel::Trace => (format!("Trace #{} detail:", index), inserted_string)
+            }
+        }).for_each(|(key_val, string_req)| {
+            payload_object.insert(key_val, string_req.to_string());
+        });
+
+        LogEvent::new(
+            ActorType::Planet,
+            sender_id,
+            receiver_type,
+            receiver_id,
+            event_type,
+            channel,
+            payload_object
+        ).emit();
+    }
+
+
+    /*
+        Macro to build the specialize loggin for each channel
+    */
+    macro_rules! specialize_channel_func {
+        ( $( $Enum:ident => $name:literal ),* ) => {
+            $(
+                paste::paste!(
+                    pub fn [<log_for_channel_ $name:lower>](
+                        sender_id: impl Into<u64>,
+                        receiver_type: ActorType,
+                        receiver_id: impl Into<String>,
+                        event_type: EventType,
+                        payload: Vec<String>,
+                    ) {
+                        log_message(
+                            sender_id.into(),
+                            receiver_type,
+                            receiver_id.into(),
+                            event_type,
+                            Channel::$Enum,
+                            payload
+                        )
+                    }
+                );
+            )*
+        };
+    }
+
+
+    // Define scope of the macro
+    specialize_channel_func!(
+        Error => "Error",
+        Warning => "Warning",
+        Info => "Info",
+        Debug => "Debug",
+        Trace => "Trace"
+    );
 }
