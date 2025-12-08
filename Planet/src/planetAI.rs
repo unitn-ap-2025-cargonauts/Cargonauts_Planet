@@ -1116,7 +1116,6 @@ mod logging_wrapper {
                             payload
                         )
                     }
-
                     #[allow(unused)]
                     pub fn [<log_for_channel_with_key_ $name:lower>] (
                         sender_id: impl Into<u64>,
