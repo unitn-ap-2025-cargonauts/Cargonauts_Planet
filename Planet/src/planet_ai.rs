@@ -801,7 +801,7 @@ fn handle_energy_cell_request(
 
 #[cfg(test)]
 mod tests {
-    use crate::planetAI::{create_planet, handle_energy_cell_request, handle_supported_combination_request, handle_supported_resource_request};
+    use crate::planet_ai::{create_planet, handle_energy_cell_request, handle_supported_combination_request, handle_supported_resource_request};
     use std::sync::{Arc, Mutex, Once};
     use std::collections::HashSet;
     use std::{thread};
@@ -811,6 +811,7 @@ mod tests {
     use common_game::components::sunray::Sunray;
     use common_game::protocols::messages::{ExplorerToPlanet, OrchestratorToPlanet, PlanetToExplorer, PlanetToOrchestrator};
     use crossbeam_channel::{unbounded, Receiver, Sender};
+
 
     static INIT_LOGGER: Once = Once::new();
     pub fn init_logger() {
@@ -1298,7 +1299,7 @@ mod tests {
             panic!("Expected SupportedCombinationResponse variant");
         }
     }
-  
+
     #[test]
     fn test_internal_state_request() {
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();

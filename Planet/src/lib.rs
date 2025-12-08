@@ -1,1 +1,1 @@
-mod planetAI;
+mod planet_ai;
