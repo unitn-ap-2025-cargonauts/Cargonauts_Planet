@@ -9,7 +9,7 @@
 use common_game::components::planet::*;
 use common_game::components::resource::*;
 use common_game::components::rocket::Rocket;
-use common_game::logging::{ActorType, Channel, EventType, LogEvent, Payload};
+use common_game::logging::{ActorType, EventType};
 use common_game::protocols::messages::*;
 use crossbeam_channel::{Receiver, Sender};
 use paste::paste;
@@ -313,7 +313,7 @@ impl PlanetAI for CargonautsPlanet {
 #[allow(dead_code)]
 fn handle_supported_resource_request(
     planet_id: u32,
-    exploer_id: u32,
+    explorer_id: u32,
     generator: &Generator,
 ) -> Option<PlanetToExplorer> {
     //LOG debug: "Called handle_supported_resource_request" + parameters
@@ -324,23 +324,21 @@ fn handle_supported_resource_request(
         EventType::InternalPlanetAction,
         vec![
             ("Debug detail".to_string(),"Called handle_supported_resource_request".to_string()),
-            ("generator".to_string(), format!("{:p}", generator)),
+            ("generator".to_string(), format!("{:?}", generator)),
         ],
     );
     let resource_list = generator.all_available_recipes();
-    //TODO log trace: "Available recipes count: X"
     //LOG info: "SupportedResourceResponse"
     logging_wrapper::log_for_channel_with_key_info(
         planet_id,
         ActorType::Explorer,
-        exploer_id.to_string(),
+        explorer_id.to_string(),
         EventType::MessagePlanetToExplorer,
         vec![
             ("msg_enum".to_string(), "SupportedResourceResponse".to_string()),
-            ("resource_list".to_string(), format!("{:p}", &resource_list))
+            ("resource_list".to_string(), format!("{:?}", &resource_list))
         ],
     );
-    let output = Some(PlanetToExplorer::SupportedResourceResponse { resource_list });
     //LOG debug: "Exit handle_supported_resource_request" + value return
     logging_wrapper::log_for_channel_with_key_debug(
         planet_id,
@@ -349,10 +347,10 @@ fn handle_supported_resource_request(
         EventType::InternalPlanetAction,
         vec![
             ("Debug detail".to_string(),"Exit handle_supported_resource_request".to_string()),
-            ("return".to_string(), format!("{:p}", &output))
+            ("return".to_string(), format!("Some(PlanetToExplorer::SupportedResourceResponse{{{:?}}})", &resource_list))
         ],
     );
-    output
+    Some(PlanetToExplorer::SupportedResourceResponse{resource_list})
 }
 
 /// This handler returns a [PlanetToExplorer::SupportedCombinationResponse] message that wrap the list of complex resources
@@ -373,7 +371,7 @@ fn handle_supported_resource_request(
 #[allow(dead_code)]
 fn handle_supported_combination_request(
     planet_id: u32,
-    exploer_id: u32,
+    explorer_id: u32,
     combinator: &Combinator,
 ) -> Option<PlanetToExplorer> {
     //LOG debug: "Called handle_supported_combination_request" + parameters
@@ -384,23 +382,21 @@ fn handle_supported_combination_request(
         EventType::InternalPlanetAction,
         vec![
             ("Debug detail".to_string(),"Called handle_supported_combination_request".to_string()),
-            ("combinator".to_string(), format!("{:p}", combinator)),
+            ("combinator".to_string(), format!("{:?}", combinator)),
         ],
     );
     let combination_list = combinator.all_available_recipes();
-    //TODO log trace: "Available combinations count: X"
     //LOG info: "SupportedCombinationResponse"
     logging_wrapper::log_for_channel_with_key_info(
         planet_id,
         ActorType::Explorer,
-        exploer_id.to_string(),
+        explorer_id.to_string(),
         EventType::MessagePlanetToExplorer,
         vec![
             ("msg_enum".to_string(), "SupportedCombinationResponse".to_string()),
-            ("combination_list".to_string(), format!("{:p}", &combination_list))
+            ("combination_list".to_string(), format!("{:?}", &combination_list))
         ],
     );
-    let output = Some(PlanetToExplorer::SupportedCombinationResponse  { combination_list });
     //LOG debug: "Exit handle_supported_combination_request" + value return
     logging_wrapper::log_for_channel_with_key_debug(
         planet_id,
@@ -409,10 +405,10 @@ fn handle_supported_combination_request(
         EventType::InternalPlanetAction,
         vec![
             ("Debug detail".to_string(),"Exit handle_supported_combination_request".to_string()),
-            ("return".to_string(), format!("{:p}", &output))
+            ("return".to_string(), format!("Some(PlanetToExplorer::SupportedCombinationResponse{{{:?}}})", &combination_list))
         ],
     );
-    output
+    Some(PlanetToExplorer::SupportedCombinationResponse{combination_list})
 }
 
 /// This handler processes a request to generate a basic resource using the planet's generator,
@@ -443,37 +439,53 @@ fn handle_supported_combination_request(
 ///     - Wrap a `None` in a [PlanetToExplorer::GenerateResourceResponse] message and return it.
 #[allow(dead_code)]
 fn handle_generate_resource_request(
-    exploer_id: u32,
+    explorer_id: u32,
     state: &mut PlanetState,
     generator: &Generator,
     req_resource: BasicResourceType,
 ) -> Option<PlanetToExplorer> {
+    let planet_id = state.id();
     //LOG debug: "Called handle_generate_resource_request" + parameters
     logging_wrapper::log_for_channel_with_key_debug(
-        state.id(),
+        planet_id,
         ActorType::SelfActor,
         "0",
         EventType::InternalPlanetAction,
         logging_wrapper::append_info_to_state(state,vec![
             ("Debug detail".to_string(),"Called handle_generate_resource_request".to_string()),
-            ("generator".to_string(), format!("{:p}", generator)),
-            ("req_resource".to_string(), format!("{:p}", &req_resource)),
+            ("generator".to_string(), format!("{:?}", generator)),
+            ("req_resource".to_string(), format!("{:?}", &req_resource)),
         ]),
     );
     let mut resource: Option<BasicResource> = None;
     let energy_cell = state.cell_mut(0);
-    //TODO log trace: "Checking energy cell charge state: {is_charged:?}"
-    if energy_cell.is_charged(){
+    let is_charged = energy_cell.is_charged();
+    //LOG trace: "Checking energy cell charge state: {is_charged:?}"
+    logging_wrapper::log_for_channel_trace(
+        planet_id,
+        ActorType::SelfActor,
+        explorer_id.to_string(),
+        EventType::InternalPlanetAction,
+        vec![format!("Checking energy cell charge state: {}", if is_charged { "charged" } else { "discharged" })]
+    );
+    if is_charged{
         match req_resource {
             BasicResourceType::Carbon => {
-                //TODO log trace: "Attempting to generate Carbon resource"
+                //LOG trace: "Attempting to generate Carbon resource"
+                logging_wrapper::log_for_channel_trace(
+                    planet_id,
+                    ActorType::SelfActor,
+                    explorer_id.to_string(),
+                    EventType::InternalPlanetAction,
+                    vec!["Attempting to generate Carbon".to_string()]
+                );
                 match generator.make_carbon(energy_cell){
                     Ok( r) => {
                         //LOG info: "Successfully generated Carbon resource"
                         logging_wrapper::log_for_channel_info(
-                            state.id(),
+                            planet_id,
                             ActorType::SelfActor,
-                            exploer_id.to_string(),
+                            explorer_id.to_string(),
                             EventType::InternalPlanetAction,
                             vec!["Successfully generated Carbon resource".to_string()],
                         );
@@ -482,13 +494,13 @@ fn handle_generate_resource_request(
                     Err(e) => {
                         //LOG error: "Failed to generate Carbon: {e:?}" + state
                         logging_wrapper::log_for_channel_with_key_error(
-                            state.id(),
+                            planet_id,
                             ActorType::SelfActor,
                             "0",
                             EventType::InternalPlanetAction,
                             logging_wrapper::append_info_to_state(state,vec![
                                 ("Error detail".to_string(),"Failed to generate Carbon".to_string()),
-                                ("error_msg".to_string(), format!("{:p}", &e)),
+                                ("error_msg".to_string(), format!("{:?}", &e)),
                             ]),
                         );
                     }
@@ -497,82 +509,66 @@ fn handle_generate_resource_request(
             _ => {
                 //LOG error: "Unexpected resource type requested"
                 logging_wrapper::log_for_channel_with_key_error(
-                    state.id(),
+                    planet_id,
                     ActorType::SelfActor,
                     "0",
                     EventType::InternalPlanetAction,
                     logging_wrapper::append_info_to_state(state,vec![
                         ("Error detail".to_string(),"Unexpected resource type requested".to_string()),
-                        ("req_resource".to_string(), format!("{:p}", &req_resource)),
+                        ("req_resource".to_string(), format!("{:?}", &req_resource)),
                     ]),
                 );
-                let mut payload = Payload::new();
-                payload.insert("msg_type".to_string(), "Unexpected resource type".to_string());
-                LogEvent::new(
-                    ActorType::Planet,
-                    state.id(),
-                    ActorType::SelfActor,
-                    state.id().to_string(),
-                    EventType::InternalPlanetAction,
-                    Channel::Error,
-                    payload
-                ).emit();
             }
         }
     } else {
         //LOG info: "Uncharged energy cell. Cannot generate resource Carbon"
         logging_wrapper::log_for_channel_info(
-            state.id(),
+            planet_id,
             ActorType::SelfActor,
-            exploer_id.to_string(),
+            explorer_id.to_string(),
             EventType::InternalPlanetAction,
             vec!["Uncharged energy cell. Cannot generate resource Carbon".to_string()],
         );
-        let mut payload = Payload::new();
-        payload.insert("msg_type".to_string(), "Uncharged energy cell. Can't generate the resource".to_string());
-        LogEvent::new(
-            ActorType::Planet,
-            state.id(),
-            ActorType::SelfActor,
-            state.id().to_string(),
-            EventType::InternalPlanetAction,
-            Channel::Warning,
-            payload
-        ).emit();
     }
     //LOG info: "GenerateResourceResponse"
     logging_wrapper::log_for_channel_with_key_info(
-        state.id(),
+        planet_id,
         ActorType::Explorer,
-        exploer_id.to_string(),
+        explorer_id.to_string(),
         EventType::MessagePlanetToExplorer,
         vec![
             ("msg_enum".to_string(), "GenerateResourceResponse".to_string()),
-            ("resource".to_string(), format!("{:p}", &resource))
+            ("resource".to_string(), format!("{:?}", &resource))
         ],
     );
-    let output = Some(PlanetToExplorer::GenerateResourceResponse { resource });
     //LOG debug: "Exit handle_generate_resource_request" + return
     logging_wrapper::log_for_channel_with_key_debug(
-        state.id(),
+        planet_id,
         ActorType::SelfActor,
         "0",
         EventType::InternalPlanetAction,
         vec![
             ("Debug detail".to_string(),"Exit handle_generate_resource_request".to_string()),
-            ("return".to_string(), format!("{:p}", &output))
+            ("return".to_string(), format!("Some(PlanetToExplorer::GenerateResourceResponse{{{:?}}})", &resource))
         ],
     );
-    output
+    Some(PlanetToExplorer::GenerateResourceResponse {resource})
 }
 
 macro_rules! generate_complex_resource {
-    ($combinator:expr, $cell:expr, $msg:expr, { $( $complex_resource:ident ( $r1:ident, $r2:ident ) ),* $(,)? }) => {{
+    ($planet_id:expr, $explorer_id:expr, $combinator:expr, $cell:expr, $msg:expr, { $( $complex_resource:ident ( $r1:ident, $r2:ident ) ),* $(,)? }) => {{
         paste! {
             match $msg {
                 $(
                     ComplexResourceRequest::$complex_resource($r1, $r2) => {
-                        //TODO log trace: "Attempting combination for {complex_resource}"
+                        //LOG trace: "Attempting combination for {complex_resource}"
+                        logging_wrapper::log_for_channel_trace(
+                            $planet_id,
+                            ActorType::SelfActor,
+                            $explorer_id.to_string(),
+                            EventType::InternalPlanetAction,
+                            vec![format!("Attempting combination for {}", stringify!($complex_resource))]
+                        );
                         $combinator
                             .[<make_ $complex_resource:lower>]($r1, $r2, $cell)
                             .map(ComplexResource::$complex_resource)
@@ -612,14 +608,14 @@ macro_rules! generate_complex_resource {
 /// - Else:
 ///     - Attempt to combine the provided ingredients using the combinator.
 ///     - Wrap the produced resource in a [PlanetToExplorer::CombineResourceResponse] message and return it.
-///
 #[allow(dead_code)]
 fn handle_combine_resource_request(
-    exploer_id: u32,
+    explorer_id: u32,
     state: &mut PlanetState,
     combinator: &Combinator,
     msg: ComplexResourceRequest,
 ) -> Option<PlanetToExplorer> {
+    let planet_id = state.id();
     //LOG debug: "Called handle_combine_resource_request" + parameters
     logging_wrapper::log_for_channel_with_key_debug(
         state.id(),
@@ -628,18 +624,26 @@ fn handle_combine_resource_request(
         EventType::InternalPlanetAction,
         logging_wrapper::append_info_to_state(state,vec![
             ("Debug detail".to_string(),"Called handle_combine_resource_request".to_string()),
-            ("combinator".to_string(), format!("{:p}", combinator)),
-            ("msg".to_string(), format!("{:p}", &msg)),
+            ("combinator".to_string(), format!("{:?}", combinator)),
+            ("msg".to_string(), format!("{:?}", &msg)),
         ]),
     );
     let energy_cell = state.cell_mut(0);
-    //TODO log trace: "Energy cell charged: {energy_cell.is_charged()}"
-    if !energy_cell.is_charged() {
+    let is_charged = energy_cell.is_charged();
+    //LOG trace: "Checking energy cell charge state: {is_charged:?}"
+    logging_wrapper::log_for_channel_trace(
+        planet_id,
+        ActorType::SelfActor,
+        explorer_id.to_string(),
+        EventType::InternalPlanetAction,
+        vec![format!("Checking energy cell charge state: {}", if is_charged { "charged" } else { "discharged" })]
+    );
+    if !is_charged {
         //LOG info: "Uncharged energy cell. Cannot combine resources"
         logging_wrapper::log_for_channel_info(
             state.id(),
             ActorType::SelfActor,
-            exploer_id.to_string(),
+            explorer_id.to_string(),
             EventType::InternalPlanetAction,
             vec!["Uncharged energy cell. Cannot combine resources".to_string()],
         );
@@ -657,14 +661,13 @@ fn handle_combine_resource_request(
         logging_wrapper::log_for_channel_with_key_info(
             state.id(),
             ActorType::Explorer,
-            exploer_id.to_string(),
+            explorer_id.to_string(),
             EventType::MessagePlanetToExplorer,
             vec![
                 ("msg_enum".to_string(), "CombineResourceResponse".to_string()),
-                ("complex_response".to_string(), format!("{:p}", &complex_response))
+                ("complex_response".to_string(), format!("{:?}", &complex_response))
             ],
         );
-        let output = Some(PlanetToExplorer::CombineResourceResponse {complex_response});
         //LOG debug: "Exit handle_combine_resource_request" + return
         logging_wrapper::log_for_channel_with_key_debug(
             state.id(),
@@ -673,52 +676,13 @@ fn handle_combine_resource_request(
             EventType::InternalPlanetAction,
             vec![
                 ("Debug detail".to_string(),"Exit handle_combine_resource_request".to_string()),
-                ("return".to_string(), format!("{:p}", &output))
+                ("return".to_string(), format!("Some(PlanetToExplorer::CombineResourceResponse {{{:?}}}", &complex_response))
             ],
         );
-        return output
+        return Some(PlanetToExplorer::CombineResourceResponse {complex_response});
     }
 
-    /*let complex_response = match msg {
-        ComplexResourceRequest::Diamond(c1, c2) => {
-            combinator
-                .make_diamond(c1, c2, energy_cell)
-                .map(ComplexResource::Diamond)
-                .map_err(|(msg, r1, r2)| (msg, r1.to_generic(), r2.to_generic()))
-        }
-        ComplexResourceRequest::Life(w, c) => {
-            combinator
-                .make_life(w, c, energy_cell)
-                .map(ComplexResource::Life)
-                .map_err(|(msg, r1, r2)| (msg, r1.to_generic(), r2.to_generic()))
-        }
-        ComplexResourceRequest::Water(h, o) => {
-            combinator
-                .make_water(h, o, energy_cell)
-                .map(ComplexResource::Water)
-                .map_err(|(msg, r1, r2)| (msg, r1.to_generic(), r2.to_generic()))
-        }
-        ComplexResourceRequest::Robot(s, l) => {
-            combinator
-                .make_robot(s, l, energy_cell)
-                .map(ComplexResource::Robot)
-                .map_err(|(msg, r1, r2)| (msg, r1.to_generic(), r2.to_generic()))
-        }
-        ComplexResourceRequest::Dolphin(w, l) => {
-            combinator
-                .make_dolphin(w, l, energy_cell)
-                .map(ComplexResource::Dolphin)
-                .map_err(|(msg, r1, r2)| (msg, r1.to_generic(), r2.to_generic()))
-        }
-        ComplexResourceRequest::AIPartner(r, d) => {
-            combinator
-                .make_aipartner(r, d, energy_cell)
-                .map(ComplexResource::AIPartner)
-                .map_err(|(msg, r1, r2)| (msg, r1.to_generic(), r2.to_generic()))
-        }
-    };*/
-
-    let complex_response = generate_complex_resource!(combinator, energy_cell, msg, {
+    let complex_response = generate_complex_resource!(planet_id, explorer_id, combinator, energy_cell, msg, {
         Diamond(c1, c2),
         Life(w, c),
         Water(h, o),
@@ -727,26 +691,27 @@ fn handle_combine_resource_request(
         AIPartner(r, d),
     });
 
-    //LOG info: "Successfully combined resources"
-    logging_wrapper::log_for_channel_info(
-        state.id(),
-        ActorType::SelfActor,
-        exploer_id.to_string(),
-        EventType::InternalPlanetAction,
-        vec!["Successfully combined resources".to_string()],
-    );
+    if complex_response.is_ok() {
+        //LOG info: "Successfully combined resources"
+        logging_wrapper::log_for_channel_info(
+            state.id(),
+            ActorType::SelfActor,
+            explorer_id.to_string(),
+            EventType::InternalPlanetAction,
+            vec!["Successfully combined resources".to_string()],
+        );
+    }
     //LOG info: "CombineResourceResponse"
     logging_wrapper::log_for_channel_with_key_info(
         state.id(),
         ActorType::Explorer,
-        exploer_id.to_string(),
+        explorer_id.to_string(),
         EventType::MessagePlanetToExplorer,
         vec![
             ("msg_enum".to_string(), "CombineResourceResponse".to_string()),
-            ("complex_response".to_string(), format!("{:p}", &complex_response))
+            ("complex_response".to_string(), format!("{:?}", &complex_response))
         ],
     );
-    let output = Some(PlanetToExplorer::CombineResourceResponse {complex_response});
     //LOG debug: "Exit handle_combine_resource_request" + return
     logging_wrapper::log_for_channel_with_key_debug(
         state.id(),
@@ -755,10 +720,10 @@ fn handle_combine_resource_request(
         EventType::InternalPlanetAction,
         vec![
             ("Debug detail".to_string(),"Exit handle_combine_resource_request".to_string()),
-            ("return".to_string(), format!("{:p}", &output))
+            ("return".to_string(), format!("Some(PlanetToExplorer::CombineResourceResponse {{{:?}}}", &complex_response))
         ],
     );
-    output
+    Some(PlanetToExplorer::CombineResourceResponse {complex_response})
 }
 
 /// This handler returns an [PlanetToExplorer::AvailableEnergyCellResponse] message containing
@@ -782,12 +747,13 @@ fn handle_combine_resource_request(
 /// - Wraps the counter inside an [PlanetToExplorer::AvailableEnergyCellResponse] message and returns it
 #[allow(dead_code)]
 fn handle_energy_cell_request(
-    exploer_id: u32,
+    explorer_id: u32,
     state: &PlanetState,
 ) -> Option<PlanetToExplorer> {
+    let planet_id = state.id();
     //LOG debug: "Called handle_energy_cell_request" + parameter
     logging_wrapper::log_for_channel_with_key_debug(
-        state.id(),
+        planet_id,
         ActorType::SelfActor,
         "0",
         EventType::InternalPlanetAction,
@@ -796,40 +762,47 @@ fn handle_energy_cell_request(
         ]),
     );
     let mut available_cells = 0;
-    //TODO log trace: "Energy cell charged: {energy_cell.is_charged()}"
-    if state.cell(0).is_charged() {
+    let is_charged = state.cell(0).is_charged();
+    //LOG trace: "Checking energy cell charge state: {is_charged:?}"
+    logging_wrapper::log_for_channel_trace(
+        planet_id,
+        ActorType::SelfActor,
+        explorer_id.to_string(),
+        EventType::InternalPlanetAction,
+        vec![format!("Checking energy cell charge state: {}", if is_charged { "charged" } else { "discharged" })]
+    );
+    if is_charged{
         available_cells += 1;
     }
     //LOG info: "CombineResourceResponse"
     logging_wrapper::log_for_channel_with_key_info(
-        state.id(),
+        planet_id,
         ActorType::Explorer,
-        exploer_id.to_string(),
+        explorer_id.to_string(),
         EventType::MessagePlanetToExplorer,
         vec![
             ("msg_enum".to_string(), "CombineResourceResponse".to_string()),
-            ("available_cells".to_string(), format!("{:p}", &available_cells))
+            ("available_cells".to_string(), format!("{:?}", &available_cells))
         ],
     );
-    let output = Some(PlanetToExplorer::AvailableEnergyCellResponse { available_cells });
     //LOG debug: "Exit handle_energy_cell_request" + return
     logging_wrapper::log_for_channel_with_key_debug(
-        state.id(),
+        planet_id,
         ActorType::SelfActor,
         "0",
         EventType::InternalPlanetAction,
         vec![
             ("Debug detail".to_string(),"Exit handle_energy_cell_request".to_string()),
-            ("return".to_string(), format!("{:p}", &output))
+            ("return".to_string(), format!("Some(PlanetToExplorer::AvailableEnergyCellResponse{{{:?}}}", &available_cells))
         ],
     );
-    output
+    Some(PlanetToExplorer::AvailableEnergyCellResponse{available_cells})
 }
 
 #[cfg(test)]
 mod tests {
     use crate::planetAI::{create_planet, handle_energy_cell_request, handle_supported_combination_request, handle_supported_resource_request};
-    use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex, Once};
     use std::collections::HashSet;
     use std::{thread};
     use common_game::components::asteroid::Asteroid;
@@ -839,6 +812,15 @@ mod tests {
     use common_game::protocols::messages::{ExplorerToPlanet, OrchestratorToPlanet, PlanetToExplorer, PlanetToOrchestrator};
     use crossbeam_channel::{unbounded, Receiver, Sender};
 
+    static INIT_LOGGER: Once = Once::new();
+    pub fn init_logger() {
+        INIT_LOGGER.call_once(|| {
+            env_logger::Builder::from_default_env()
+                .filter_level(log::LevelFilter::Trace)
+                .is_test(true)
+                .init();
+        });
+    }
 
     fn planet_to_explorer_channel_creator() -> (Sender<PlanetToExplorer>, Receiver<PlanetToExplorer>) {
         let (planet_to_explorer_sender, planet_to_explorer_receiver): (Sender<PlanetToExplorer>, Receiver<PlanetToExplorer>) = unbounded();
@@ -874,6 +856,8 @@ mod tests {
 
     impl TestHarness {
         fn new() -> Self {
+            init_logger();
+
             let (to_orch_tx, to_orch_rx) = planet_to_orchestrator_channels_creator();
             let (from_orch_tx, from_orch_rx) = orchestrator_to_planet_channels_creator();
             let (to_exp_tx, to_exp_rx) = planet_to_explorer_channel_creator();
@@ -935,9 +919,7 @@ mod tests {
     #[test]
     fn asteroid_with_uncharged_cell() {
 
-        env_logger::Builder::from_default_env()
-            .filter_level(log::LevelFilter::Trace)
-            .init();
+        init_logger();
 
         // ----------------- Channels and planet creation
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
@@ -972,9 +954,7 @@ mod tests {
     #[test]
     fn test_asteroid_handler_with_charged_cell() {
 
-        env_logger::Builder::from_default_env()
-            .filter_level(log::LevelFilter::Trace)
-            .init();
+        init_logger();
 
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
         let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
@@ -1021,9 +1001,7 @@ mod tests {
     #[test]
     fn test_rocket_with_disabled_ai() {
 
-        env_logger::Builder::from_default_env()
-            .filter_level(log::LevelFilter::Trace)
-            .init();
+        init_logger();
 
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
         let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
@@ -1066,9 +1044,7 @@ mod tests {
     #[test]
     fn test_start_and_stop_planet_ai() {
 
-        env_logger::Builder::from_default_env()
-            .filter_level(log::LevelFilter::Trace)
-            .init();
+        init_logger();
 
         let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
         let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
@@ -1178,6 +1154,7 @@ mod tests {
         let h = TestHarness::new();
 
         h.start();
+        h.sunray();
         h.incoming_explorer(1, h.to_exp_tx.clone());
 
         h.send_explorer(ExplorerToPlanet::GenerateResourceRequest {
@@ -1277,10 +1254,7 @@ mod tests {
 
         match h.recv_explorer() {
             PlanetToExplorer::CombineResourceResponse { complex_response } => {
-                match complex_response {
-                    Ok(_) => {panic!("Expected Err()")}
-                    Err(_) => {assert!(true)}
-                }
+                assert!(complex_response.is_err(), "Expected Err(), got {:?}", complex_response);
             }
             _ => panic!("Expected CombineResourceResponse"),
         }
@@ -1610,13 +1584,10 @@ mod logging_wrapper {
         let stringify_rocket = |option_rocket: bool| -> String  {match option_rocket { true => "Some(rocket)".to_string(), false => "None".to_string() } };
         vec!(
             ("id".to_string(), format!("{:?}", planet_state.id())),
-            ("energy_cell".to_string(), format!("charged? {} }}", planet_state.cell(0).is_charged()) ),
+            ("energy_cell.is_charged()".to_string(), format!("{}", planet_state.cell(0).is_charged()) ),
             ( "rocket".to_string(), format!("{}", stringify_rocket(planet_state.has_rocket())) )
         )
     }
-
-
-
 
     pub fn append_info_to_state(state: &PlanetState, input_vec: Vec<(String, String)>) -> Vec<(String, String)> {
 
