@@ -1099,6 +1099,7 @@ mod logging_wrapper {
         ( $( $Enum:ident => $name:literal ),* ) => {
             $(
                 paste::paste!(
+                    #[allow(unused)]
                     pub fn [<log_for_channel_ $name:lower>](
                         sender_id: impl Into<u64>,
                         receiver_type: ActorType,
@@ -1116,6 +1117,7 @@ mod logging_wrapper {
                         )
                     }
 
+                    #[allow(unused)]
                     pub fn [<log_for_channel_with_key_ $name:lower>] (
                         sender_id: impl Into<u64>,
                         receiver_type: ActorType,
@@ -1141,7 +1143,7 @@ mod logging_wrapper {
     // Define scope of the macro
     specialize_channel_func!(
         Error => "Error",
-        //Warning => "Warning",
+        Warning => "Warning",
         Info => "Info",
         Debug => "Debug",
         Trace => "Trace"
