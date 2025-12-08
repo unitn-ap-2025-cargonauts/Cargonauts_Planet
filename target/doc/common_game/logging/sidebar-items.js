@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["ActorType","Channel","EventType"],"struct":["LogEvent"],"type":["Payload"]};
