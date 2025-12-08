@@ -436,8 +436,33 @@ fn handle_generate_resource_request(
                     Err(e) => panic!("{:?}", e) //TODO log it
                 }
             },
-            _ => panic!("Unexpected resource type") //TODO log it
+            _ => {
+                let mut payload = Payload::new();
+                payload.insert("msg_type".to_string(), "Unexpected resource type".to_string());
+                LogEvent::new(
+                    ActorType::Planet,
+                    state.id(),
+                    ActorType::SelfActor,
+                    state.id().to_string(),
+                    EventType::InternalPlanetAction,
+                    Channel::Error,
+                    payload
+                ).emit();
+                //panic!("Unexpected resource type")//TODO log in
+            }
         }
+    } else {
+        let mut payload = Payload::new();
+        payload.insert("msg_type".to_string(), "Uncharged energy cell. Can't generate the resource".to_string());
+        LogEvent::new(
+            ActorType::Planet,
+            state.id(),
+            ActorType::SelfActor,
+            state.id().to_string(),
+            EventType::InternalPlanetAction,
+            Channel::Warning,
+            payload
+        ).emit();
     }
     Some(PlanetToExplorer::GenerateResourceResponse { resource })
 }
@@ -495,7 +520,16 @@ fn handle_combine_resource_request(
     let energy_cell = state.cell_mut(0);
 
     if !energy_cell.is_charged() {
-        return None;
+        let (r1, r2) = match msg {
+            ComplexResourceRequest::Diamond(c1, c2) => (c1.to_generic(), c2.to_generic()),
+            ComplexResourceRequest::Life(w, c) => (w.to_generic(), c.to_generic()),
+            ComplexResourceRequest::Water(h, o) => (h.to_generic(), o.to_generic()),
+            ComplexResourceRequest::Robot(s, l) => (s.to_generic(), l.to_generic()),
+            ComplexResourceRequest::Dolphin(w, l) => (w.to_generic(), l.to_generic()),
+            ComplexResourceRequest::AIPartner(r, d) => (r.to_generic(), d.to_generic()),
+        };
+        let complex_response: Result<ComplexResource,(String,GenericResource,GenericResource)> = Err(("Uncharged energy cell. Can't combine the resources".to_string(), r1, r2));
+        return Some(PlanetToExplorer::CombineResourceResponse {complex_response});
     }
 
     /*let complex_response = match msg {
@@ -586,8 +620,9 @@ mod tests {
     use std::collections::HashSet;
     use std::{thread};
     use common_game::components::asteroid::Asteroid;
+    use common_game::components::planet::Planet;
     use common_game::components::sunray::Sunray;
-    use common_game::components::resource::{BasicResourceType, ComplexResourceType};
+    use common_game::components::resource::{BasicResource, BasicResourceType, ComplexResource, ComplexResourceRequest, ComplexResourceType};
     use common_game::protocols::messages::{ExplorerToPlanet, OrchestratorToPlanet, PlanetToExplorer, PlanetToOrchestrator};
     use crossbeam_channel::{unbounded, Receiver, Sender};
     use crate::planetAI::{handle_energy_cell_request, handle_supported_combination_request, handle_supported_resource_request, create_planet};
@@ -614,6 +649,72 @@ mod tests {
     fn planet_to_orchestrator_channels_creator() -> (Sender<PlanetToOrchestrator>, Receiver<PlanetToOrchestrator>) {
         let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver): (Sender<PlanetToOrchestrator>, Receiver<PlanetToOrchestrator>) = unbounded();
         (planet_to_orchestrator_sender, planet_to_orchestrator_receiver)
+    }
+
+    struct TestHarness {
+        from_orch_tx: Sender<OrchestratorToPlanet>,
+        to_orch_rx: Receiver<PlanetToOrchestrator>,
+        from_exp_tx: Sender<ExplorerToPlanet>,
+        to_exp_tx: Sender<PlanetToExplorer>,
+        to_exp_rx: Receiver<PlanetToExplorer>,
+        planet: Arc<Mutex<Planet>>,
+        _thread: thread::JoinHandle<()>,
+    }
+
+    impl TestHarness {
+        fn new() -> Self {
+            let (to_orch_tx, to_orch_rx) = planet_to_orchestrator_channels_creator();
+            let (from_orch_tx, from_orch_rx) = orchestrator_to_planet_channels_creator();
+            let (to_exp_tx, to_exp_rx) = planet_to_explorer_channel_creator();
+            let (from_exp_tx, from_exp_rx) = explorer_to_planet_channels_creator();
+
+            let planet = Arc::new(Mutex::new(create_planet(
+                from_orch_rx,
+                to_orch_tx,
+                from_exp_rx,
+                2,
+            )));
+
+            let planet_for_thread = Arc::clone(&planet);
+
+            let handle = thread::spawn(move || {
+                let _ = planet_for_thread.lock().unwrap().run();
+            });
+
+            Self {
+                from_orch_tx,
+                to_orch_rx,
+                from_exp_tx,
+                to_exp_tx,
+                to_exp_rx,
+                planet,
+                _thread: handle,
+            }
+        }
+
+        fn start(&self) {
+            let _ = self.from_orch_tx.send(OrchestratorToPlanet::StartPlanetAI);
+            let _ = self.to_orch_rx.recv();
+        }
+
+        fn sunray(&self) {
+            let _ = self.from_orch_tx.send(OrchestratorToPlanet::Sunray(Sunray::default()));
+            let _ = self.to_orch_rx.recv();
+        }
+
+        fn incoming_explorer(&self, id: u32, tx: Sender<PlanetToExplorer>) {
+            let msg = OrchestratorToPlanet::IncomingExplorerRequest { explorer_id: id, new_mpsc_sender: tx };
+            let _ = self.from_orch_tx.send(msg);
+            let _ = self.to_orch_rx.recv();
+        }
+
+        fn send_explorer(&self, msg: ExplorerToPlanet) {
+            let _ = self.from_exp_tx.send(msg);
+        }
+
+        fn recv_explorer(&self) -> PlanetToExplorer {
+            self.to_exp_rx.recv().unwrap()
+        }
     }
 
 
@@ -799,17 +900,8 @@ mod tests {
 
     #[test]
     fn test_unit_handle_supported_resource_request() {
-        let (to_orchestrator_tx, _to_orchestrator_rx) = planet_to_orchestrator_channels_creator(); // Planet -> Orchestrator
-        let (_from_orchestrator_tx, from_orchestrator_rx) = orchestrator_to_planet_channels_creator(); // Orchestrator -> Planet
-        let (_to_explorer_tx, _to_explorer_rx) = planet_to_explorer_channel_creator(); // Planet -> Explorer
-        let (_from_explorer_tx, from_explorer_rx) = explorer_to_planet_channels_creator(); // Explorer -> Planet
-
-        let planet = create_planet(
-            from_orchestrator_rx,
-            to_orchestrator_tx,
-            from_explorer_rx,
-            2,
-        );
+        let h = TestHarness::new();
+        let planet = h.planet.lock().unwrap();
 
         let result = handle_supported_resource_request(planet.generator());
 
@@ -826,17 +918,8 @@ mod tests {
 
     #[test]
     fn test_unit_handle_supported_combination_request() {
-        let (to_orchestrator_tx, _to_orchestrator_rx) = planet_to_orchestrator_channels_creator(); // Planet -> Orchestrator
-        let (_from_orchestrator_tx, from_orchestrator_rx) = orchestrator_to_planet_channels_creator(); // Orchestrator -> Planet
-        let (_to_explorer_tx, _to_explorer_rx) = planet_to_explorer_channel_creator(); // Planet -> Explorer
-        let (_from_explorer_tx, from_explorer_rx) = explorer_to_planet_channels_creator(); // Explorer -> Planet
-
-        let planet = create_planet(
-            from_orchestrator_rx,
-            to_orchestrator_tx,
-            from_explorer_rx,
-            2,
-        );
+        let h = TestHarness::new();
+        let planet = h.planet.lock().unwrap();
 
         let result = handle_supported_combination_request(planet.combinator());
 
@@ -859,57 +942,165 @@ mod tests {
     }
 
     #[test]
-    fn test_integration_handle_orchestrator_msg_sunray_and_handle_energy_cell_request_charge() {
-        let (to_orchestrator_tx, _to_orchestrator_rx) = planet_to_orchestrator_channels_creator(); // Planet -> Orchestrator
-        let (from_orchestrator_tx, from_orchestrator_rx) = orchestrator_to_planet_channels_creator(); // Orchestrator -> Planet
-        let (_to_explorer_tx, _to_explorer_rx) = planet_to_explorer_channel_creator(); // Planet -> Explorer
-        let (_from_explorer_tx, from_explorer_rx) = explorer_to_planet_channels_creator(); // Explorer -> Planet
+    fn test_integration_generate_carbon_with_energy() {
+        let h = TestHarness::new();
 
-        let planet = Arc::new(Mutex::new(create_planet(
-            from_orchestrator_rx,
-            to_orchestrator_tx,
-            from_explorer_rx,
-            2,
-        )));
+        h.start();
+        h.sunray();
+        h.incoming_explorer(1, h.to_exp_tx.clone());
 
-        let planet_for_thread = Arc::clone(&planet);
-
-        let thread_var = thread::spawn(move || {
-            let _ = planet_for_thread.lock().unwrap().run();
+        h.send_explorer(ExplorerToPlanet::GenerateResourceRequest {
+            explorer_id: 1,
+            resource: BasicResourceType::Carbon,
         });
 
-        let _ = from_orchestrator_tx.send(OrchestratorToPlanet::StartPlanetAI);
-        let _ = from_orchestrator_tx.send(OrchestratorToPlanet::Sunray(Sunray::default()));
-        let _ = from_orchestrator_tx.send(OrchestratorToPlanet::StopPlanetAI);
+        match h.recv_explorer() {
+            PlanetToExplorer::GenerateResourceResponse { resource } => {
+                assert!(matches!(resource, Some(BasicResource::Carbon(_))));
+            }
+            _ => panic!("Expected GenerateResourceResponse"),
+        }
+    }
 
-        drop(from_orchestrator_tx);
-        let _ = thread_var.join();
+    #[test]
+    fn test_integration_generate_unsupported_resource() {
+        let h = TestHarness::new();
 
-        let planet_guard = planet.lock().unwrap();
-        let result = handle_energy_cell_request(planet_guard.state());
+        h.start();
+        h.incoming_explorer(1, h.to_exp_tx.clone());
 
-        assert!(result.is_some());
+        h.send_explorer(ExplorerToPlanet::GenerateResourceRequest {
+            explorer_id: 1,
+            resource: BasicResourceType::Oxygen,
+        });
 
-        if let Some(PlanetToExplorer::AvailableEnergyCellResponse { available_cells }) = result {
-            assert_eq!(available_cells, 1);
-        } else {
-            panic!("Expected AvailableEnergyCellResponse");
+        match h.recv_explorer() {
+            PlanetToExplorer::GenerateResourceResponse { resource } =>
+                assert!(resource.is_none()),
+            _ => panic!("Expected GenerateResourceResponse"),
+        }
+    }
+
+    #[test]
+    fn test_integration_generate_carbon_without_energy() {
+        let h = TestHarness::new();
+
+        h.start();
+        h.incoming_explorer(1, h.to_exp_tx.clone());
+
+        h.send_explorer(ExplorerToPlanet::GenerateResourceRequest {
+            explorer_id: 1,
+            resource: BasicResourceType::Carbon,
+        });
+
+        match h.recv_explorer() {
+            PlanetToExplorer::GenerateResourceResponse { resource } =>
+                assert!(resource.is_none()),
+            _ => panic!("Expected GenerateResourceResponse"),
+        }
+    }
+
+    #[test]
+    fn test_integration_combine_carbon_with_energy() {
+        let h = TestHarness::new();
+        h.start();
+        h.incoming_explorer(1, h.to_exp_tx.clone());
+
+        let mut bag = Vec::new();
+
+        for _ in 0..2 {
+            h.sunray();
+            h.send_explorer(ExplorerToPlanet::GenerateResourceRequest {
+                explorer_id: 1,
+                resource: BasicResourceType::Carbon,
+            });
+            if let PlanetToExplorer::GenerateResourceResponse { resource: Some(BasicResource::Carbon(c)) } =
+                h.recv_explorer()
+            {
+                bag.push(c);
+            } else {
+                panic!("Expected Carbon");
+            }
+        }
+
+        h.sunray();
+
+        h.send_explorer(ExplorerToPlanet::CombineResourceRequest {
+            explorer_id: 1,
+            msg: ComplexResourceRequest::Diamond(bag.pop().unwrap(), bag.pop().unwrap()),
+        });
+
+        match h.recv_explorer() {
+            PlanetToExplorer::CombineResourceResponse { complex_response: Ok(ComplexResource::Diamond(_)) } => {}
+            _ => panic!("Expected Ok(Diamond)"),
+        }
+    }
+
+    #[test]
+    fn test_integration_combine_carbon_without_energy() {
+        let h = TestHarness::new();
+        h.start();
+        h.incoming_explorer(1, h.to_exp_tx.clone());
+
+        let mut bag = Vec::new();
+
+        for _ in 0..2 {
+            h.sunray();
+            h.send_explorer(ExplorerToPlanet::GenerateResourceRequest {
+                explorer_id: 1,
+                resource: BasicResourceType::Carbon,
+            });
+            if let PlanetToExplorer::GenerateResourceResponse { resource: Some(BasicResource::Carbon(c)) } =
+                h.recv_explorer()
+            {
+                bag.push(c);
+            } else {
+                panic!("Expected Carbon");
+            }
+        }
+
+        h.send_explorer(ExplorerToPlanet::CombineResourceRequest {
+            explorer_id: 1,
+            msg: ComplexResourceRequest::Diamond(bag.pop().unwrap(), bag.pop().unwrap()),
+        });
+
+        match h.recv_explorer() {
+            PlanetToExplorer::CombineResourceResponse { complex_response } => {
+                match complex_response {
+                    Ok(_) => {panic!("Expected Err()")}
+                    Err(_) => {assert!(true)}
+                }
+            }
+            _ => panic!("Expected CombineResourceResponse"),
+        }
+    }
+
+    #[test]
+    fn test_integration_handle_orchestrator_msg_sunray_and_handle_energy_cell_request_charge() {
+        let h = TestHarness::new();
+
+        h.start();
+        h.sunray();
+        h.incoming_explorer(1, h.to_exp_tx.clone());
+
+        h.from_exp_tx
+            .send(ExplorerToPlanet::AvailableEnergyCellRequest { explorer_id: 1 })
+            .unwrap();
+
+        let response = h.to_exp_rx.recv().unwrap();
+
+        match response {
+            PlanetToExplorer::AvailableEnergyCellResponse { available_cells } => {
+                assert_eq!(available_cells, 1);
+            }
+            _ => panic!("Expected AvailableEnergyCellResponse"),
         }
     }
 
     #[test]
     fn test_unit_handle_energy_cell_request_discharge() {
-        let (to_orchestrator_tx, _to_orchestrator_rx) = planet_to_orchestrator_channels_creator(); // Planet -> Orchestrator
-        let (_from_orchestrator_tx, from_orchestrator_rx) = orchestrator_to_planet_channels_creator(); // Orchestrator -> Planet
-        let (_to_explorer_tx, _to_explorer_rx) = planet_to_explorer_channel_creator(); // Planet -> Explorer
-        let (_from_explorer_tx, from_explorer_rx) = explorer_to_planet_channels_creator(); // Explorer -> Planet
-
-        let planet = create_planet(
-            from_orchestrator_rx,
-            to_orchestrator_tx,
-            from_explorer_rx,
-            2,
-        );
+        let h = TestHarness::new();
+        let planet = h.planet.lock().unwrap();
 
         let result = handle_energy_cell_request(planet.state());
 
@@ -921,6 +1112,55 @@ mod tests {
         } else {
             panic!("Expected SupportedCombinationResponse variant");
         }
+    }
+  
+    #[test]
+    fn test_internal_state_request() {
+        let (orchestrator_to_planet_sender, orchestrator_to_planet_receiver) = orchestrator_to_planet_channels_creator();
+        let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver) = planet_to_orchestrator_channels_creator();
+        let (_, explorer_to_planet_receiver) = explorer_to_planet_channels_creator();
+
+        let test_planet_id = 10;
+
+        let mut planet = create_planet(
+            orchestrator_to_planet_receiver,
+            planet_to_orchestrator_sender,
+            explorer_to_planet_receiver,
+            test_planet_id,
+        );
+
+        let planet_thread = thread::spawn(move || {
+            let _ = planet.run();
+        });
+
+        orchestrator_to_planet_sender
+            .send(OrchestratorToPlanet::StartPlanetAI)
+            .expect("Failed to send StartPlanetAI");
+
+        let _ = planet_to_orchestrator_receiver.recv();
+
+        orchestrator_to_planet_sender
+            .send(OrchestratorToPlanet::InternalStateRequest)
+            .expect("Failed to send InternalStateRequest");
+
+        let response = planet_to_orchestrator_receiver.recv();
+
+        match response {
+            Ok(PlanetToOrchestrator::InternalStateResponse { planet_id, planet_state }) => {
+                assert_eq!(planet_id, test_planet_id, "Returned planet ID does not match");
+
+
+                assert_eq!(planet_state.energy_cells.len(), 1, "Planet C should have 1 energy cell");
+            },
+            Ok(_) => panic!("Received unexpected message type"),
+            Err(e) => panic!("Failed to receive response: {:?}", e),
+        }
+
+        orchestrator_to_planet_sender
+            .send(OrchestratorToPlanet::KillPlanet)
+            .expect("Failed to send KillPlanet");
+
+        let _ = planet_thread.join();
     }
 }
 
@@ -1155,29 +1395,19 @@ mod logging_wrapper {
         )
     }
 
-/*    pub fn drop_planet_state_fields_as_vector(planet_state: &PlanetState) -> Vec<(String, String)> {
+    pub fn drop_planet_state_fields_as_vector(planet_state: &PlanetState) -> Vec<(String, String)> {
         let stringify_rocket = |option_rocket: bool| -> String  {match option_rocket { true => "Some(rocket)".to_string(), false => "None".to_string() } };
         vec!(
             ("id".to_string(), format!("{:?}", planet_state.id())),
             ("energy_cell".to_string(), format!("charged? {} }}", planet_state.cell(0).is_charged()) ),
             ( "rocket".to_string(), format!("{}", stringify_rocket(planet_state.has_rocket())) )
         )
-    }*/
-
-
-/*    pub fn drop_energy_cell_state_fields_as_vector(planet_state: &PlanetState) -> Vec<(String, String)> {
-        vec![drop_planet_state_fields_as_vector(planet_state).remove(1)]
     }
 
 
 
-    pub fn drop_energy_rocket_state_fields_as_vector(planet_state: &PlanetState) -> Vec<(String, String)> {
-        vec![drop_planet_state_fields_as_vector(planet_state).remove(2)]
-    }*/
 
-
-
-    /*pub fn append_info_to_state(state: &PlanetState, input_vec: Vec<(String, String)>) -> Vec<(String, String)> {
+    pub fn append_info_to_state(state: &PlanetState, input_vec: Vec<(String, String)>) -> Vec<(String, String)> {
 
         let mut vec = Vec::<(String, String)>::new();
 
@@ -1194,6 +1424,6 @@ mod logging_wrapper {
         } );
 
         vec
-    }*/
+    }
 
 }
