@@ -1,29 +1,24 @@
 //! # Cargonauts Planet AI Module
 //!
-//! This module contains the implementation of the `PlanetAI` trait for the
+//! This module contains the implementation of the [PlanetAI] trait for the
 //! Cargonauts planet. It defines how the planet handle messages from the
 //! Orchestrator and the Explorer.
 //!
 //! Each handler is defined as a standalone function to keep the logic modular and clean.
 
-use crossbeam_channel::{Sender, Receiver};
 use common_game::components::planet::*;
 use common_game::components::resource::*;
 use common_game::components::rocket::Rocket;
 use common_game::logging::{ActorType, Channel, EventType, LogEvent, Payload};
 use common_game::protocols::messages::*;
-
+use crossbeam_channel::{Receiver, Sender};
 use paste::paste;
 
-#[allow(dead_code)]
-trait PlanetDefinition {
-    fn get_name() -> &'static str;
-    fn get_type() -> &'static PlanetType;
-}
-
+//For docs
+#[allow(unused_imports)]
+use common_game::components::energy_cell::EnergyCell;
 
 struct CargonautsPlanet;
-
 
 fn log_message(
     sender_id: impl Into<u64>,
@@ -51,7 +46,30 @@ fn log_message(
 }
 
 
-/// Function that create a Planet with specific arguments TODO
+/// Creates a new [`Planet`] instance set for be a Cargonauts planet.
+///
+/// # Parameters
+/// - `rx_orchestrator`: Receiver for messages sent from the orchestrator to the planet
+///   ([`OrchestratorToPlanet`]).
+/// - `tx_orchestrator`: Sender for messages sent from the planet to the orchestrator
+///   ([`PlanetToOrchestrator`]).
+/// - `rx_explorer`: Receiver for messages sent from the explorer to the planet
+///   ([`ExplorerToPlanet`]).
+/// - `planet_id`: Unique identifier assigned to the created planet.
+///
+/// # Returns
+/// A fully initialized [`Planet`] instance configured with:
+/// - Planet type [`PlanetType::C`]
+/// - A default implementation of [`CargonautsPlanet`] AI
+/// - Support for generating the basic resource [`BasicResourceType::Carbon`]
+/// - Support for crafting complex resources:
+///   [`Diamond`], [`Life`], [`AIPartner`], [`Dolphin`], [`Robot`], [`Water`]
+///
+/// # Panics
+/// This function **panics** if the planet creation fails.
+///
+/// The panic message is:
+/// **"Planet creation error!"**
 #[allow(dead_code)]
 pub fn create_planet(
     rx_orchestrator: Receiver<OrchestratorToPlanet>,
@@ -62,7 +80,7 @@ pub fn create_planet(
     let planet = Planet::new(
         planet_id,
         PlanetType::C,
-        Box::new(CargonautsPlanet::default()),
+        Box::new(CargonautsPlanet),
         vec![BasicResourceType::Carbon],
         vec![
             ComplexResourceType::Diamond,
@@ -78,17 +96,6 @@ pub fn create_planet(
     assert!(planet.is_ok(), "Planet creation error!");
     planet.unwrap()
 }
-
-impl PlanetDefinition for CargonautsPlanet {
-    fn get_name() -> &'static str {
-        "Cargonauts Planet"
-    }
-
-    fn get_type() -> &'static PlanetType {
-        &PlanetType::C
-    }
-}
-
 
 impl Default for CargonautsPlanet {
     fn default() -> Self {
@@ -210,8 +217,7 @@ impl PlanetAI for CargonautsPlanet {
         }
     }
 
-
-    /// Handler for the [Asteroid] message, it returns `None` or `Some([Rocket])` based on the rules of the
+    /// Handler for the [OrchestratorToPlanet::Asteroid] message, it returns `None` or `Some([Rocket])` based on the rules of the
     /// [Planet] or the availability of [Rocket] on the planet.
     ///
     /// More precisely, it returns `None` if:
@@ -220,8 +226,8 @@ impl PlanetAI for CargonautsPlanet {
     ///
     /// It returns `Some(Rocket)` if:
     /// - The [Planet]'s rules allow it to do so and it already has a [Rocket] that can be used.
-    /// - The [Planet]'s rules allow it to do so and it was able to build a [Rocket] when [Asteroid]
-    /// message was delivered to it.
+    /// - The [Planet]'s rules allow it to do so and it was able to build a [Rocket] when [OrchestratorToPlanet::Asteroid]
+    ///   message was delivered to it.
     fn handle_asteroid(
         &mut self,
         state: &mut PlanetState,
@@ -261,7 +267,7 @@ impl PlanetAI for CargonautsPlanet {
             if let Some(charged_cell_position_result) = charged_cell_position {
                 // Create the rocket and return it
                 let created_rocket_result = state.build_rocket( charged_cell_position_result );
-                if let Ok(_) = created_rocket_result {
+                if created_rocket_result.is_ok() {
 
                     log_message(
                         state.id(),
@@ -350,59 +356,63 @@ impl PlanetAI for CargonautsPlanet {
 }
 
 // === ExplorerToPlanet Handler ====================================================================
-/// This handler returns a [SupportedResourceResponse] message that wrap the list of basic resources
+/// This handler returns a [PlanetToExplorer::SupportedResourceResponse] message that wrap the list of basic resources
 /// that the planet can currently generate
 ///
 /// # Parameters
 /// - `generator`: Reference to the planet's generator
 ///
 /// # Returns
-/// `Some(PlanetToExplorer::SupportedResourceResponse)`
+/// `Option<PlanetToExplorer>`
 ///
-/// # Panics
-/// This function does not panic.
+/// `Some(PlanetToExplorer::SupportedResourceResponse)` if successful.
 ///
 /// # Logic
 /// The planet can craft basic resources, so the handler:
 /// - Get the set of available basic resource from the planet generator
-/// - Wrap the set in a [SupportedResourceResponse] message and return it
+/// - Wrap the set in a [PlanetToExplorer::SupportedResourceResponse] message and return it
 #[allow(dead_code)]
 fn handle_supported_resource_request(
     generator: &Generator,
 ) -> Option<PlanetToExplorer> {
+    //TODO log debug: "Called handle_supported_resource_request" + parameters
     let resource_list = generator.all_available_recipes();
-
+    //TODO log trace: "Available recipes count: X"
+    //TODO log info: "SupportedResourceResponse"
     Some(PlanetToExplorer::SupportedResourceResponse { resource_list })
+    //TODO log debug: "Exit handle_supported_resource_request" + value return
 }
 
-/// This handler returns a [SupportedCombinationResponse] message that wrap the list of complex resources
+/// This handler returns a [PlanetToExplorer::SupportedCombinationResponse] message that wrap the list of complex resources
 /// that the planet can currently generate
 ///
 /// # Parameters
 /// - `combinator`: Reference to the planet's combinator
 ///
 /// # Returns
-/// `Some(PlanetToExplorer::SupportedCombinationResponse)`
+/// `Option<PlanetToExplorer>`
 ///
-/// # Panics
-/// This function does not panic.
+/// `Some(PlanetToExplorer::SupportedCombinationResponse)` if successful.
 ///
 /// # Logic
 /// The planet can craft complex resources, so the handler:
 /// - Get the set of available complex resource from the planet combinator
-/// - Wrap the set in a [SupportedCombinationResponse] message and return it
+/// - Wrap the set in a [PlanetToExplorer::SupportedCombinationResponse] message and return it
 #[allow(dead_code)]
 fn handle_supported_combination_request(
     combinator: &Combinator,
 ) -> Option<PlanetToExplorer> {
+    //TODO log debug: "Called handle_supported_combination_request" + parameters
     let combination_list = combinator.all_available_recipes();
-
+    //TODO log trace: "Available combinations count: X"
+    //TODO log info: "SupportedCombinationResponse"
+    //TODO log debug: "Exit handle_supported_combination_request" + value return
     Some(PlanetToExplorer::SupportedCombinationResponse  { combination_list })
 }
 
 /// This handler processes a request to generate a basic resource using the planet's generator,
 /// if energy is available.
-/// It returns a [GenerateResourceResponse] message containing the generated resource.
+/// It returns a [PlanetToExplorer::GenerateResourceResponse] message containing the generated resource.
 ///
 /// # Parameters
 /// - `state`: Mutable reference to the planet state.
@@ -410,38 +420,48 @@ fn handle_supported_combination_request(
 /// - `req_resource`: The type of basic resource the explorer is requesting to generate.
 ///
 /// # Returns
+/// `Option<PlanetToExplorer>`
+///
 /// `Some(PlanetToExplorer::GenerateResourceResponse)` containing:
 /// - `Some(BasicResource::Carbon)` on successful generation.
 /// - `None` if the planet has no charged energy cell.
 ///
-/// # Panics
-/// - If the requested resource type is not supported by the generator.
+/// # Errors
 /// - If the generator reports an unexpected error while crafting.
 ///
 /// # Logic
 /// - Retrieve the energy cell and check if it is charged
 /// - If charged:
 ///     - Attempt to generate the requested basic resource via the generator
-///     - Wrap the generated resource in a [GenerateResourceResponse] message and return it.
+///     - Wrap the generated resource in a [PlanetToExplorer::GenerateResourceResponse] message and return it.
 /// - Else:
-///     - Wrap a `None` in a [GenerateResourceResponse] message and return it.
+///     - Wrap a `None` in a [PlanetToExplorer::GenerateResourceResponse] message and return it.
 #[allow(dead_code)]
 fn handle_generate_resource_request(
     state: &mut PlanetState,
     generator: &Generator,
     req_resource: BasicResourceType,
 ) -> Option<PlanetToExplorer> {
+    //TODO log debug: "Called handle_generate_resource_request" + parameters
     let mut resource: Option<BasicResource> = None;
     let energy_cell = state.cell_mut(0);
+    //TODO log trace: "Checking energy cell charge state: {is_charged:?}"
     if energy_cell.is_charged(){
         match req_resource {
             BasicResourceType::Carbon => {
+                //TODO log trace: "Attempting to generate Carbon resource"
                 match generator.make_carbon(energy_cell){
-                    Ok( r) => resource = Some(BasicResource::Carbon(r)),
-                    Err(e) => panic!("{:?}", e) //TODO log it
+                    Ok( r) => {
+                        //TODO log info: "Successfully generated Carbon resource"
+                        resource = Some(BasicResource::Carbon(r))
+                    },
+                    Err(e) => {
+                        //TODO log error: "Failed to generate Carbon: {e:?}" + state
+                    }
                 }
             },
             _ => {
+                //TODO log error: "Unexpected resource type requested: {req_resource:?}"
                 let mut payload = Payload::new();
                 payload.insert("msg_type".to_string(), "Unexpected resource type".to_string());
                 LogEvent::new(
@@ -453,10 +473,10 @@ fn handle_generate_resource_request(
                     Channel::Error,
                     payload
                 ).emit();
-                //panic!("Unexpected resource type")//TODO log in
             }
         }
     } else {
+        //TODO log info: "Uncharged energy cell. Cannot generate resource {req_resource:?}"
         let mut payload = Payload::new();
         payload.insert("msg_type".to_string(), "Uncharged energy cell. Can't generate the resource".to_string());
         LogEvent::new(
@@ -469,6 +489,8 @@ fn handle_generate_resource_request(
             payload
         ).emit();
     }
+    //TODO log info: "GenerateResourceResponse"
+    //TODO log debug: "Exit handle_generate_resource_request" + return
     Some(PlanetToExplorer::GenerateResourceResponse { resource })
 }
 
@@ -478,6 +500,7 @@ macro_rules! generate_complex_resource {
             match $msg {
                 $(
                     ComplexResourceRequest::$complex_resource($r1, $r2) => {
+                        //TODO log trace: "Attempting combination for {complex_resource}"
                         $combinator
                             .[<make_ $complex_resource:lower>]($r1, $r2, $cell)
                             .map(ComplexResource::$complex_resource)
@@ -491,7 +514,7 @@ macro_rules! generate_complex_resource {
 
 /// This handler processes a request to combine two basic or complex resources
 /// into a new complex resource using the planet's combinator, if energy is available.
-/// It returns a [CombineResourceResponse] message containing the newly
+/// It returns a [PlanetToExplorer::CombineResourceResponse] message containing the newly
 /// crafted complex resource.
 ///
 /// # Parameters
@@ -501,30 +524,34 @@ macro_rules! generate_complex_resource {
 ///   explorer want to craft, with the ingredients required.
 ///
 /// # Returns
-/// `Some(PlanetToExplorer::CombineResourceResponse)` containing:
-/// - `Some(ComplexResource::X)` if the combination succeeds.
-/// - `None` if the planet has no charged energy cell.
+/// `Option<PlanetToExplorer>`
 ///
-/// # Panics
-/// - If the requested complex resource type is not supported by the combinator.
+/// `Some(PlanetToExplorer::CombineResourceResponse)` containing:
+/// - `Ok(ComplexResource::X)` if the combination succeeds.
+/// - `Err((String, GenericResource, GenericResource))` if the planet has no charged energy cell.
+///
+/// # Errors
 /// - If the combinator reports an unexpected error while crafting.
 ///
 /// # Logic
 /// - Retrieve the energy cell and check if it is charged.
-/// - If charged:
-///     - Attempt to combine the provided ingredients using the combinator.
-///     - Wrap the produced resource in a [CombineResourceResponse] message and return it.
+/// - If not charged:
+///     - Wrap a `Err` with the passed [GenericResource] in a [PlanetToExplorer::CombineResourceResponse] message and return it.
 /// - Else:
-///     - Wrap a `None` in a [CombineResourceResponse] message and return it.
+///     - Attempt to combine the provided ingredients using the combinator.
+///     - Wrap the produced resource in a [PlanetToExplorer::CombineResourceResponse] message and return it.
+///
 #[allow(dead_code)]
 fn handle_combine_resource_request(
     state: &mut PlanetState,
     combinator: &Combinator,
     msg: ComplexResourceRequest,
 ) -> Option<PlanetToExplorer> {
+    //TODO log debug: "Called handle_combine_resource_request" + parameters
     let energy_cell = state.cell_mut(0);
-
+    //TODO log trace: "Energy cell charged: {energy_cell.is_charged()}"
     if !energy_cell.is_charged() {
+        //TODO log info: "Uncharged energy cell for combination request"
         let (r1, r2) = match msg {
             ComplexResourceRequest::Diamond(c1, c2) => (c1.to_generic(), c2.to_generic()),
             ComplexResourceRequest::Life(w, c) => (w.to_generic(), c.to_generic()),
@@ -534,6 +561,9 @@ fn handle_combine_resource_request(
             ComplexResourceRequest::AIPartner(r, d) => (r.to_generic(), d.to_generic()),
         };
         let complex_response: Result<ComplexResource,(String,GenericResource,GenericResource)> = Err(("Uncharged energy cell. Can't combine the resources".to_string(), r1, r2));
+
+        //TODO log info: "CombineResourceResponse"
+        //TODO log debug: "Exit handle_combine_resource_request" + return
         return Some(PlanetToExplorer::CombineResourceResponse {complex_response});
     }
 
@@ -585,10 +615,13 @@ fn handle_combine_resource_request(
         AIPartner(r, d),
     });
 
+    //TODO log info: "Generated the resource {resource:?}"
+    //TODO log info: "CombineResourceResponse"
+    //TODO log debug: "Exit handle_combine_resource_request" + return
     Some(PlanetToExplorer::CombineResourceResponse {complex_response})
 }
 
-/// This handler returns an [AvailableEnergyCellResponse] message containing
+/// This handler returns an [PlanetToExplorer::AvailableEnergyCellResponse] message containing
 /// the number of currently charged energy cells available on the planet.
 /// Since the planet has only one energy cell, the value can only be 0 or 1.
 ///
@@ -596,42 +629,46 @@ fn handle_combine_resource_request(
 /// - `state`: Reference to the planet state
 ///
 /// # Returns
+/// `Option<PlanetToExplorer>`
+///
 /// `Some(PlanetToExplorer::AvailableEnergyCellResponse)` with `available_cells` set to:
 /// - **0**: if the energy cell is discharged
 /// - **1**: if the energy cell is charged
-///
-/// # Panics
-/// This function does not panic.
 ///
 /// # Logic
 /// The handler:
 /// - Initializes a counter to 0
 /// - Accesses the energy cell and increments the counter if it is charged
-/// - Wraps the counter inside an [AvailableEnergyCellResponse] message and returns it
+/// - Wraps the counter inside an [PlanetToExplorer::AvailableEnergyCellResponse] message and returns it
 #[allow(dead_code)]
 fn handle_energy_cell_request(
     state: &PlanetState,
 ) -> Option<PlanetToExplorer> {
+    //TODO log debug: "Called handle_energy_cell_request" + parameter
     let mut available_cells = 0;
+    //TODO log trace: "Energy cell charged: {energy_cell.is_charged()}"
     if state.cell(0).is_charged() {
         available_cells += 1;
     }
+    //TODO log trace: "Available energy cell {available_cells:?}"
+    //TODO log info: "CombineResourceResponse"
+    //TODO log debug: "Exit handle_energy_cell_request" + return
     Some(PlanetToExplorer::AvailableEnergyCellResponse { available_cells })
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
-    use std::collections::HashSet;
-    use std::thread;
+    use crate::planetAI::{create_planet, handle_energy_cell_request, handle_supported_combination_request, handle_supported_resource_request};
     use common_game::components::asteroid::Asteroid;
     use common_game::components::planet::Planet;
-    use common_game::components::sunray::Sunray;
     use common_game::components::resource::{BasicResource, BasicResourceType, ComplexResource, ComplexResourceRequest, ComplexResourceType};
+    use common_game::components::sunray::Sunray;
     use common_game::protocols::messages::{ExplorerToPlanet, OrchestratorToPlanet, PlanetToExplorer, PlanetToOrchestrator};
     use crossbeam_channel::{unbounded, Receiver, Sender};
-    use crate::planetAI::{handle_energy_cell_request, handle_supported_combination_request, handle_supported_resource_request, create_planet};
-
+    use std::collections::HashSet;
+    use std::sync::{Arc, Mutex};
+    use std::thread;
+    
 
     fn planet_to_explorer_channel_creator() -> (Sender<PlanetToExplorer>, Receiver<PlanetToExplorer>) {
         let (planet_to_explorer_sender, planet_to_explorer_receiver): (Sender<PlanetToExplorer>, Receiver<PlanetToExplorer>) = unbounded();
