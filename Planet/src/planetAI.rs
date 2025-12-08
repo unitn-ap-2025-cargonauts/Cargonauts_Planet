@@ -335,8 +335,33 @@ fn handle_generate_resource_request(
                     Err(e) => panic!("{:?}", e) //TODO log it
                 }
             },
-            _ => panic!("Unexpected resource type") //TODO log it
+            _ => {
+                let mut payload = Payload::new();
+                payload.insert("msg_type".to_string(), "Unexpected resource type".to_string());
+                LogEvent::new(
+                    ActorType::Planet,
+                    state.id(),
+                    ActorType::SelfActor,
+                    state.id().to_string(),
+                    EventType::InternalPlanetAction,
+                    Channel::Error,
+                    payload
+                ).emit();
+                //panic!("Unexpected resource type")//TODO log in
+            }
         }
+    } else {
+        let mut payload = Payload::new();
+        payload.insert("msg_type".to_string(), "Uncharged energy cell. Can't generate the resource".to_string());
+        LogEvent::new(
+            ActorType::Planet,
+            state.id(),
+            ActorType::SelfActor,
+            state.id().to_string(),
+            EventType::InternalPlanetAction,
+            Channel::Warning,
+            payload
+        ).emit();
     }
     Some(PlanetToExplorer::GenerateResourceResponse { resource })
 }
@@ -394,7 +419,16 @@ fn handle_combine_resource_request(
     let energy_cell = state.cell_mut(0);
 
     if !energy_cell.is_charged() {
-        return None;
+        let (r1, r2) = match msg {
+            ComplexResourceRequest::Diamond(c1, c2) => (c1.to_generic(), c2.to_generic()),
+            ComplexResourceRequest::Life(w, c) => (w.to_generic(), c.to_generic()),
+            ComplexResourceRequest::Water(h, o) => (h.to_generic(), o.to_generic()),
+            ComplexResourceRequest::Robot(s, l) => (s.to_generic(), l.to_generic()),
+            ComplexResourceRequest::Dolphin(w, l) => (w.to_generic(), l.to_generic()),
+            ComplexResourceRequest::AIPartner(r, d) => (r.to_generic(), d.to_generic()),
+        };
+        let complex_response: Result<ComplexResource,(String,GenericResource,GenericResource)> = Err(("Uncharged energy cell. Can't combine the resources".to_string(), r1, r2));
+        return Some(PlanetToExplorer::CombineResourceResponse {complex_response});
     }
 
     /*let complex_response = match msg {
@@ -486,7 +520,7 @@ mod tests {
     use std::thread;
     use common_game::components::asteroid::Asteroid;
     use common_game::components::sunray::Sunray;
-    use common_game::components::resource::{BasicResourceType, ComplexResourceType};
+    use common_game::components::resource::{BasicResource, BasicResourceType, ComplexResource, ComplexResourceRequest, ComplexResourceType, Carbon};
     use common_game::protocols::messages::{ExplorerToPlanet, OrchestratorToPlanet, PlanetToExplorer, PlanetToOrchestrator};
     use crossbeam_channel::{unbounded, Receiver, Sender};
     use crate::planetAI::{handle_energy_cell_request, handle_supported_combination_request, handle_supported_resource_request, create_planet};
@@ -512,6 +546,68 @@ mod tests {
     fn planet_to_orchestrator_channels_creator() -> (Sender<PlanetToOrchestrator>, Receiver<PlanetToOrchestrator>) {
         let (planet_to_orchestrator_sender, planet_to_orchestrator_receiver): (Sender<PlanetToOrchestrator>, Receiver<PlanetToOrchestrator>) = unbounded();
         (planet_to_orchestrator_sender, planet_to_orchestrator_receiver)
+    }
+
+    struct TestHarness {
+        from_orch_tx: Sender<OrchestratorToPlanet>,
+        to_orch_rx: Receiver<PlanetToOrchestrator>,
+        from_exp_tx: Sender<ExplorerToPlanet>,
+        to_exp_tx: Sender<PlanetToExplorer>,
+        to_exp_rx: Receiver<PlanetToExplorer>,
+        _thread: thread::JoinHandle<()>,
+    }
+
+    impl TestHarness {
+        fn new() -> Self {
+            let (to_orch_tx, to_orch_rx) = planet_to_orchestrator_channels_creator();
+            let (from_orch_tx, from_orch_rx) = orchestrator_to_planet_channels_creator();
+            let (to_exp_tx, to_exp_rx) = planet_to_explorer_channel_creator();
+            let (from_exp_tx, from_exp_rx) = explorer_to_planet_channels_creator();
+
+            let mut planet = create_planet(
+                from_orch_rx,
+                to_orch_tx,
+                from_exp_rx,
+                2,
+            );
+
+            let handle = thread::spawn(move || {
+                let _ = planet.run();
+            });
+
+            Self {
+                from_orch_tx,
+                to_orch_rx,
+                from_exp_tx,
+                to_exp_tx,
+                to_exp_rx,
+                _thread: handle,
+            }
+        }
+
+        fn start(&self) {
+            let _ = self.from_orch_tx.send(OrchestratorToPlanet::StartPlanetAI);
+            let _ = self.to_orch_rx.recv();
+        }
+
+        fn sunray(&self) {
+            let _ = self.from_orch_tx.send(OrchestratorToPlanet::Sunray(Sunray::default()));
+            let _ = self.to_orch_rx.recv();
+        }
+
+        fn attach_explorer(&self, id: u32, tx: Sender<PlanetToExplorer>) {
+            let msg = OrchestratorToPlanet::IncomingExplorerRequest { explorer_id: id, new_mpsc_sender: tx };
+            let _ = self.from_orch_tx.send(msg);
+            let _ = self.to_orch_rx.recv();
+        }
+
+        fn send_explorer(&self, msg: ExplorerToPlanet) {
+            let _ = self.from_exp_tx.send(msg);
+        }
+
+        fn recv_explorer(&self) -> PlanetToExplorer {
+            self.to_exp_rx.recv().unwrap()
+        }
     }
 
 
@@ -735,6 +831,418 @@ mod tests {
         } else {
             panic!("Expected SupportedCombinationResponse variant");
         }
+    }
+
+    #[test]
+    fn test_integration_generate_resource_carbon_with_energy() {
+        let (to_orchestrator_tx, to_orchestrator_rx) = planet_to_orchestrator_channels_creator(); // Planet -> Orchestrator
+        let (from_orchestrator_tx, from_orchestrator_rx) = orchestrator_to_planet_channels_creator(); // Orchestrator -> Planet
+        let (to_explorer_tx, to_explorer_rx) = planet_to_explorer_channel_creator(); // Planet -> Explorer
+        let (from_explorer_tx, from_explorer_rx) = explorer_to_planet_channels_creator(); // Explorer -> Planet
+
+        let mut planet = create_planet(
+            from_orchestrator_rx,
+            to_orchestrator_tx,
+            from_explorer_rx,
+            2,
+        );
+
+        let _ = thread::spawn(move || {
+            let _ = planet.run();
+        });
+
+        let _ = from_orchestrator_tx.send(OrchestratorToPlanet::StartPlanetAI);
+        let _ = to_orchestrator_rx.recv();
+        let _ = from_orchestrator_tx.send(OrchestratorToPlanet::Sunray(Sunray::default()));
+        let _ = to_orchestrator_rx.recv();
+        let incoming_explorer = OrchestratorToPlanet::IncomingExplorerRequest {
+            explorer_id: 1,
+            new_mpsc_sender: to_explorer_tx,
+        };
+        let _ = from_orchestrator_tx.send(incoming_explorer);
+        let _ = to_orchestrator_rx.recv();
+        let explorer_msg = ExplorerToPlanet::GenerateResourceRequest {
+            explorer_id: 1,
+            resource: BasicResourceType::Carbon,
+        };
+        let _ = from_explorer_tx.send(explorer_msg);
+
+        let result = to_explorer_rx.recv().unwrap();
+
+        if let PlanetToExplorer::GenerateResourceResponse { resource } = result {
+            match resource {
+                Some(BasicResource::Carbon(_)) => {assert!(true)}
+                _ => panic!("Expected Some(Carbon)"),
+            }
+        } else {
+            panic!("Expected GenerateResourceResponse");
+        }
+    }
+
+    #[test]
+    fn test_generate_carbon_with_energy() {
+        let h = TestHarness::new();
+
+        h.start();
+        h.sunray();
+        h.attach_explorer(1, h.to_exp_tx.clone());
+
+        h.send_explorer(ExplorerToPlanet::GenerateResourceRequest {
+            explorer_id: 1,
+            resource: BasicResourceType::Carbon,
+        });
+
+        match h.recv_explorer() {
+            PlanetToExplorer::GenerateResourceResponse { resource } => {
+                assert!(matches!(resource, Some(BasicResource::Carbon(_))));
+            }
+            _ => panic!("Expected GenerateResourceResponse"),
+        }
+    }
+
+    #[test]
+    fn test_generate_unsupported_resource() {
+        let h = TestHarness::new();
+
+        h.start();
+        h.attach_explorer(1, h.to_exp_tx.clone());
+
+        h.send_explorer(ExplorerToPlanet::GenerateResourceRequest {
+            explorer_id: 1,
+            resource: BasicResourceType::Oxygen,
+        });
+
+        match h.recv_explorer() {
+            PlanetToExplorer::GenerateResourceResponse { resource } =>
+                assert!(resource.is_none()),
+            _ => panic!("Expected GenerateResourceResponse"),
+        }
+    }
+
+    #[test]
+    fn test_generate_carbon_without_energy() {
+        let h = TestHarness::new();
+
+        h.start();
+        h.attach_explorer(1, h.to_exp_tx.clone());
+
+        h.send_explorer(ExplorerToPlanet::GenerateResourceRequest {
+            explorer_id: 1,
+            resource: BasicResourceType::Carbon,
+        });
+
+        match h.recv_explorer() {
+            PlanetToExplorer::GenerateResourceResponse { resource } =>
+                assert!(resource.is_none()),
+            _ => panic!("Expected GenerateResourceResponse"),
+        }
+    }
+
+    #[test]
+    fn test_combine_carbon_with_energy() {
+        let h = TestHarness::new();
+        h.start();
+        h.attach_explorer(1, h.to_exp_tx.clone());
+
+        let mut bag = Vec::new();
+
+        for _ in 0..2 {
+            h.sunray();
+            h.send_explorer(ExplorerToPlanet::GenerateResourceRequest {
+                explorer_id: 1,
+                resource: BasicResourceType::Carbon,
+            });
+            if let PlanetToExplorer::GenerateResourceResponse { resource: Some(BasicResource::Carbon(c)) } =
+                h.recv_explorer()
+            {
+                bag.push(c);
+            } else {
+                panic!("Expected Carbon");
+            }
+        }
+
+        h.sunray();
+
+        h.send_explorer(ExplorerToPlanet::CombineResourceRequest {
+            explorer_id: 1,
+            msg: ComplexResourceRequest::Diamond(bag.pop().unwrap(), bag.pop().unwrap()),
+        });
+
+        match h.recv_explorer() {
+            PlanetToExplorer::CombineResourceResponse { complex_response: Ok(ComplexResource::Diamond(_)) } => {}
+            _ => panic!("Expected Ok(Diamond)"),
+        }
+    }
+
+    #[test]
+    fn test_combine_carbon_without_energy() {
+        let h = TestHarness::new();
+        h.start();
+        h.attach_explorer(1, h.to_exp_tx.clone());
+
+        let mut bag = Vec::new();
+
+        for _ in 0..2 {
+            h.sunray();
+            h.send_explorer(ExplorerToPlanet::GenerateResourceRequest {
+                explorer_id: 1,
+                resource: BasicResourceType::Carbon,
+            });
+            if let PlanetToExplorer::GenerateResourceResponse { resource: Some(BasicResource::Carbon(c)) } =
+                h.recv_explorer()
+            {
+                bag.push(c);
+            } else {
+                panic!("Expected Carbon");
+            }
+        }
+
+        h.send_explorer(ExplorerToPlanet::CombineResourceRequest {
+            explorer_id: 1,
+            msg: ComplexResourceRequest::Diamond(bag.pop().unwrap(), bag.pop().unwrap()),
+        });
+
+        match h.recv_explorer() {
+            PlanetToExplorer::CombineResourceResponse { complex_response } => {
+                match complex_response {
+                    Ok(_) => {panic!("Expected Err()")}
+                    Err(_) => {assert!(true)}
+                }
+            }
+            _ => panic!("Expected CombineResourceResponse"),
+        }
+    }
+
+    #[test]
+    fn test_integration_generate_resource_carbon_without_energy() {
+        let (to_orchestrator_tx, to_orchestrator_rx) = planet_to_orchestrator_channels_creator(); // Planet -> Orchestrator
+        let (from_orchestrator_tx, from_orchestrator_rx) = orchestrator_to_planet_channels_creator(); // Orchestrator -> Planet
+        let (to_explorer_tx, to_explorer_rx) = planet_to_explorer_channel_creator(); // Planet -> Explorer
+        let (from_explorer_tx, from_explorer_rx) = explorer_to_planet_channels_creator(); // Explorer -> Planet
+
+        let mut planet = create_planet(
+            from_orchestrator_rx,
+            to_orchestrator_tx,
+            from_explorer_rx,
+            2,
+        );
+
+        let _ = thread::spawn(move || {
+            let _ = planet.run();
+        });
+
+        let _ = from_orchestrator_tx.send(OrchestratorToPlanet::StartPlanetAI);
+        let _ = to_orchestrator_rx.recv();
+        let incoming_explorer = OrchestratorToPlanet::IncomingExplorerRequest {
+            explorer_id: 1,
+            new_mpsc_sender: to_explorer_tx,
+        };
+        let _ = from_orchestrator_tx.send(incoming_explorer);
+        let _ = to_orchestrator_rx.recv();
+        let explorer_msg = ExplorerToPlanet::GenerateResourceRequest {
+            explorer_id: 1,
+            resource: BasicResourceType::Carbon,
+        };
+        let _ = from_explorer_tx.send(explorer_msg);
+
+        let result = to_explorer_rx.recv().unwrap();
+
+        if let PlanetToExplorer::GenerateResourceResponse { resource } = result {
+            assert!(resource.is_none());
+        } else {
+            panic!("Expected GenerateResourceResponse");
+        }
+    }
+
+    #[test]
+    fn test_integration_generate_unsupported_resource() {
+        env_logger::init();
+
+        let (to_orchestrator_tx, to_orchestrator_rx) = planet_to_orchestrator_channels_creator(); // Planet -> Orchestrator
+        let (from_orchestrator_tx, from_orchestrator_rx) = orchestrator_to_planet_channels_creator(); // Orchestrator -> Planet
+        let (to_explorer_tx, to_explorer_rx) = planet_to_explorer_channel_creator(); // Planet -> Explorer
+        let (from_explorer_tx, from_explorer_rx) = explorer_to_planet_channels_creator(); // Explorer -> Planet
+
+        let mut planet = create_planet(
+            from_orchestrator_rx,
+            to_orchestrator_tx,
+            from_explorer_rx,
+            2,
+        );
+
+        let _ = thread::spawn(move || {
+            let _ = planet.run();
+        });
+
+        let _ = from_orchestrator_tx.send(OrchestratorToPlanet::StartPlanetAI);
+        let _ = to_orchestrator_rx.recv();
+        let _ = from_orchestrator_tx.send(OrchestratorToPlanet::Sunray(Sunray::default()));
+        let _ = to_orchestrator_rx.recv();
+        let incoming_explorer = OrchestratorToPlanet::IncomingExplorerRequest {
+            explorer_id: 1,
+            new_mpsc_sender: to_explorer_tx,
+        };
+        let _ = from_orchestrator_tx.send(incoming_explorer);
+        let _ = to_orchestrator_rx.recv();
+        let explorer_msg = ExplorerToPlanet::GenerateResourceRequest {
+            explorer_id: 1,
+            resource: BasicResourceType::Oxygen,
+        };
+        let _ = from_explorer_tx.send(explorer_msg);
+
+        let result = to_explorer_rx.recv().unwrap();
+        if let PlanetToExplorer::GenerateResourceResponse { resource } = result {
+            assert!(resource.is_none());
+        } else {
+            panic!("Expected GenerateResourceResponse");
+        }
+    }
+
+    #[test]
+    fn test_integration_combine_resource_carbon_with_energy() {
+        let (to_orchestrator_tx, to_orchestrator_rx) = planet_to_orchestrator_channels_creator(); // Planet -> Orchestrator
+        let (from_orchestrator_tx, from_orchestrator_rx) = orchestrator_to_planet_channels_creator(); // Orchestrator -> Planet
+        let (to_explorer_tx, to_explorer_rx) = planet_to_explorer_channel_creator(); // Planet -> Explorer
+        let (from_explorer_tx, from_explorer_rx) = explorer_to_planet_channels_creator(); // Explorer -> Planet
+
+        let mut planet = create_planet(
+            from_orchestrator_rx,
+            to_orchestrator_tx,
+            from_explorer_rx,
+            2,
+        );
+
+        let _ = thread::spawn(move || {
+            let _ = planet.run();
+        });
+
+        let mut bag: Vec<Carbon> = Vec::new();
+
+        let _ = from_orchestrator_tx.send(OrchestratorToPlanet::StartPlanetAI);
+        let _ = to_orchestrator_rx.recv();
+
+        let incoming_explorer = OrchestratorToPlanet::IncomingExplorerRequest {
+            explorer_id: 1,
+            new_mpsc_sender: to_explorer_tx.clone(),
+        };
+        let _ = from_orchestrator_tx.send(incoming_explorer);
+        let _ = to_orchestrator_rx.recv();
+
+        for _ in 0..2{
+            let _ = from_orchestrator_tx.send(OrchestratorToPlanet::Sunray(Sunray::default()));
+            let _ = to_orchestrator_rx.recv();
+            let explorer_msg = ExplorerToPlanet::GenerateResourceRequest {
+                explorer_id: 1,
+                resource: BasicResourceType::Carbon,
+            };
+            let _ = from_explorer_tx.send(explorer_msg);
+
+            let result = to_explorer_rx.recv().unwrap();
+
+            if let PlanetToExplorer::GenerateResourceResponse { resource } = result {
+                match resource {
+                    Some(BasicResource::Carbon(c)) => {bag.push(c)}
+                    _ => panic!("Expected Some(Carbon)"),
+                };
+            } else {
+                panic!("Expected GenerateResourceResponse");
+            }
+        }
+
+        let _ = from_orchestrator_tx.send(OrchestratorToPlanet::Sunray(Sunray::default()));
+        let _ = to_orchestrator_rx.recv();
+        let explorer_msg = ExplorerToPlanet::CombineResourceRequest {
+            explorer_id: 1,
+            msg: ComplexResourceRequest::Diamond(bag.pop().unwrap(), bag.pop().unwrap()),
+        };
+        let _ = from_explorer_tx.send(explorer_msg);
+
+        let result = to_explorer_rx.recv().unwrap();
+
+        if let PlanetToExplorer::CombineResourceResponse { complex_response } = result {
+            match complex_response {
+                //Some(ComplexResource::Diamond(_)) => {}
+                //_ => panic!("Expected Some(Carbon)"),
+                Ok(resource) => {
+                    match resource {
+                        ComplexResource::Diamond(_) => {assert!(true)}
+                        _ => panic!("Expected ComplexResource::Diamond"),
+                    };
+                }
+                Err(_) => {panic!("Expected ComplexResource::Diamond")}
+            };
+        } else {
+            panic!("Expected CombineResourceResponse");
+        }
+    }
+
+    #[test]
+    fn test_integration_combine_resource_carbon_without_energy() {
+        let (to_orchestrator_tx, to_orchestrator_rx) = planet_to_orchestrator_channels_creator(); // Planet -> Orchestrator
+        let (from_orchestrator_tx, from_orchestrator_rx) = orchestrator_to_planet_channels_creator(); // Orchestrator -> Planet
+        let (to_explorer_tx, to_explorer_rx) = planet_to_explorer_channel_creator(); // Planet -> Explorer
+        let (from_explorer_tx, from_explorer_rx) = explorer_to_planet_channels_creator(); // Explorer -> Planet
+
+        let mut planet = create_planet(
+            from_orchestrator_rx,
+            to_orchestrator_tx,
+            from_explorer_rx,
+            2,
+        );
+
+        let _ = thread::spawn(move || {
+            let _ = planet.run();
+        });
+
+        let mut bag: Vec<Carbon> = Vec::new();
+
+        let _ = from_orchestrator_tx.send(OrchestratorToPlanet::StartPlanetAI);
+        let _ = to_orchestrator_rx.recv();
+
+        let incoming_explorer = OrchestratorToPlanet::IncomingExplorerRequest {
+            explorer_id: 1,
+            new_mpsc_sender: to_explorer_tx.clone(),
+        };
+        let _ = from_orchestrator_tx.send(incoming_explorer);
+        let _ = to_orchestrator_rx.recv();
+
+        for _ in 0..2{
+            let _ = from_orchestrator_tx.send(OrchestratorToPlanet::Sunray(Sunray::default()));
+            let _ = to_orchestrator_rx.recv();
+            let explorer_msg = ExplorerToPlanet::GenerateResourceRequest {
+                explorer_id: 1,
+                resource: BasicResourceType::Carbon,
+            };
+            let _ = from_explorer_tx.send(explorer_msg);
+
+            let result = to_explorer_rx.recv().unwrap();
+
+            if let PlanetToExplorer::GenerateResourceResponse { resource } = result {
+                match resource {
+                    Some(BasicResource::Carbon(c)) => {bag.push(c)}
+                    _ => panic!("Expected Some(Carbon)"),
+                };
+            } else {
+                panic!("Expected GenerateResourceResponse");
+            }
+        }
+        let explorer_msg = ExplorerToPlanet::CombineResourceRequest {
+            explorer_id: 1,
+            msg: ComplexResourceRequest::Diamond(bag.pop().unwrap(), bag.pop().unwrap()),
+        };
+        let _ = from_explorer_tx.send(explorer_msg);
+
+        let result = to_explorer_rx.recv().unwrap();
+
+        match result {
+            PlanetToExplorer::CombineResourceResponse { complex_response } => {
+                match complex_response {
+                    Ok(_) => {panic!("Expected Err()")}
+                    Err(_) => {assert!(true)}
+                }
+            }
+            _ => panic!("Expected CombineResourceResponse"),
+        };
     }
 
     #[test]
