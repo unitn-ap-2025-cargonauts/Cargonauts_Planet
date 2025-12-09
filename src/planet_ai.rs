@@ -269,9 +269,14 @@ impl PlanetAI for CargonautsPlanet {
                                         "{:?}",
                                         logging_wrapper::drop_planet_state_as_string(state)
                                     ),
-                                ),
+                                )
                             ],
                         );
+
+
+                        
+                        let rocket_created =  state.take_rocket();
+
                         // Give ownership to the orchestrator
                         logging_wrapper::log_for_channel_debug(
                             state.id(),
@@ -280,7 +285,7 @@ impl PlanetAI for CargonautsPlanet {
                             EventType::InternalPlanetAction,
                             vec!["Asteroid handled".to_string()],
                         );
-                        state.take_rocket()
+                        rocket_created
                     }
                     Err(string_error) => {
                         // Technically the rocket could be built but something went wrong; logging the error
@@ -314,18 +319,20 @@ impl PlanetAI for CargonautsPlanet {
                     ActorType::SelfActor,
                     0.to_string(),
                     EventType::InternalPlanetAction,
-                    vec!["planet received an Asteroid and cannot defend itself".to_string()],
+                    vec!["planet received an Asteroid and cannot defend itself and it is being destroyed".to_string()],
                 );
                 logging_wrapper::log_for_channel_with_key_trace(
                     state.id(),
                     ActorType::SelfActor,
                     0.to_string(),
                     EventType::InternalPlanetAction,
-                    vec![(
+                    vec![
+                        (
                         "State of planet before being destroyed".to_string(),
                         logging_wrapper::drop_planet_state_as_string(state),
                     )],
                 );
+
                 None
             }
         }
