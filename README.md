@@ -35,9 +35,15 @@ We use standard Rust `crossbeam_channel` channels to interact with the universe:
 
 ## 🛠 Usage Instructions
 
-To start the Cargonauts planet logic:
+To test the Cargonauts planet:
 
 ```bash
 # Ensure you have the protocol dependencies and tests
 cargo build
 cargo test
+```
+
+To use the code: 
+
+1. Add the dependency to the `Cargo.toml` file.
+2. Use the `create_planet(...)` method `cargonauts::planet_ai::create_planet(...)`

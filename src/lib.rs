@@ -1,2 +1,2 @@
-mod planet_ai;
-pub mod logging_wrapper;
+pub mod planet_ai;
+pub(crate) mod logging_wrapper;
