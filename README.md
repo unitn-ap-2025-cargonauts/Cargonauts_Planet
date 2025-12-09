@@ -39,5 +39,5 @@ To start the Cargonauts planet logic:
 
 ```bash
 # Ensure you have the protocol dependencies
-cd planet && cargo build
-cd planet && cargo test
+cargo build
+cargo test
