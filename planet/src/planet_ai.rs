@@ -13,6 +13,7 @@ use common_game::logging::{ActorType, EventType};
 use common_game::protocols::messages::*;
 use crossbeam_channel::{Receiver, Sender};
 use paste::paste;
+use crate::logging_wrapper as logging_wrapper;
 
 //For docs
 #[allow(unused_imports)]
@@ -1673,6 +1674,7 @@ mod tests {
     }
 }
 
+/*
 /// Wrapper fot the loggin module defined in the common crate.
 mod logging_wrapper {
     use common_game::components::planet::PlanetState;
@@ -1950,4 +1952,4 @@ mod logging_wrapper {
 
         vec
     }
-}
+}*/
