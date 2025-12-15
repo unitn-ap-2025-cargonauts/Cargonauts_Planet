@@ -79,6 +79,27 @@ impl Default for CargonautsPlanet {
 }
 
 impl PlanetAI for CargonautsPlanet {
+
+    // === OrchestratorToPlanet Handler ====================================================================
+    /// Handles messages sent by the Orchestrator to the Planet.
+    ///
+    /// # Parameters
+    /// - `state`: Mutable reference to the current state of the planet.
+    /// - `_generator`: Reference to the generator (unused in this handler).
+    /// - `_combinator`: Reference to the combinator (unused in this handler).
+    /// - `msg`: The [`OrchestratorToPlanet`] message to handle.
+    ///
+    /// # Returns
+    /// `Option<PlanetToOrchestrator>`
+    ///
+    /// Returns a response message to the Orchestrator if the processed message requires one,
+    /// or `None` otherwise.
+    ///
+    /// # Logic
+    /// The handler processes specific messages that modify the state or request information:
+    /// - **[`OrchestratorToPlanet::Sunray`]**: Charges the planet's energy cell and returns a [`PlanetToOrchestrator::SunrayAck`].
+    /// - **[`OrchestratorToPlanet::InternalStateRequest`]**: Serializes the current planet state and returns it via [`PlanetToOrchestrator::InternalStateResponse`].
+    /// - **Other messages**: Returns `None`. Messages such as `Start`, `Stop`, or `Asteroid` are handled by the main `run` loop or are ignored in this context.
     fn handle_orchestrator_msg(
         &mut self,
         state: &mut PlanetState,
@@ -86,26 +107,109 @@ impl PlanetAI for CargonautsPlanet {
         _combinator: &Combinator,
         msg: OrchestratorToPlanet,
     ) -> Option<PlanetToOrchestrator> {
+        let planet_id = state.id();
+
+        logging_wrapper::log_for_channel_with_key_debug(
+            planet_id,
+            ActorType::SelfActor,
+            "0",
+            EventType::InternalPlanetAction,
+            vec![
+                (
+                    "Debug detail".to_string(),
+                    "Called handle_orchestrator_msg".to_string(),
+                ),
+                // We cannot log 'msg' here easily if it is moved into the match,
+                // so we log the specific variant inside the match arms.
+            ],
+        );
+
         match msg {
             OrchestratorToPlanet::Sunray(sunray) => {
+                //LOG trace: Processing Sunray
+                logging_wrapper::log_for_channel_trace(
+                    planet_id,
+                    ActorType::SelfActor,
+                    0.to_string(),
+                    EventType::InternalPlanetAction,
+                    vec!["Received Sunray, attempting to charge cell".to_string()],
+                );
+
                 let _ = state.charge_cell(sunray);
+
+                //LOG info: SunrayAck
+                logging_wrapper::log_for_channel_with_key_info(
+                    planet_id,
+                    ActorType::Orchestrator,
+                    0.to_string(),
+                    EventType::MessagePlanetToOrchestrator,
+                    vec![
+                        (
+                            "msg_enum".to_string(),
+                            "SunrayAck".to_string(),
+                        ),
+                        (
+                            "action".to_string(),
+                            "Cell charged".to_string(),
+                        ),
+                    ],
+                );
+
                 Some(PlanetToOrchestrator::SunrayAck {
                     planet_id: state.id(),
                 })
             }
 
             OrchestratorToPlanet::InternalStateRequest => {
+                //LOG trace: Processing InternalStateRequest
+                logging_wrapper::log_for_channel_trace(
+                    planet_id,
+                    ActorType::SelfActor,
+                    0.to_string(),
+                    EventType::InternalPlanetAction,
+                    vec!["Received InternalStateRequest, gathering state".to_string()],
+                );
+
+                let dummy_state = state.to_dummy();
+
+                //LOG info: InternalStateResponse
+                logging_wrapper::log_for_channel_with_key_info(
+                    planet_id,
+                    ActorType::Orchestrator,
+                    0.to_string(),
+                    EventType::MessagePlanetToOrchestrator,
+                    vec![
+                        (
+                            "msg_enum".to_string(),
+                            "InternalStateResponse".to_string(),
+                        ),
+                        (
+                            "state_dump".to_string(),
+                            format!("{:?}", &dummy_state)
+                        ),
+                    ],
+                );
+
                 Some(PlanetToOrchestrator::InternalStateResponse {
                     planet_id: state.id(),
-                    planet_state: state.to_dummy(),
+                    planet_state: dummy_state,
                 })
             }
 
             /* All the other messages (Start,Stop,Asteroid,Explorer...)
             are already handled by the 'run' loop on planet.rs
-            If, for some reason, they get here, we ignore it
-            */
-            _ => None,
+            If, for some reason, they get here, we ignore it */
+            _ => {
+                //LOG debug: Ignored message
+                logging_wrapper::log_for_channel_debug(
+                    planet_id,
+                    ActorType::SelfActor,
+                    0.to_string(),
+                    EventType::InternalPlanetAction,
+                    vec!["Message ignored in handle_orchestrator_msg (likely handled in main loop)".to_string()],
+                );
+                None
+            },
         }
     }
 
@@ -269,9 +373,14 @@ impl PlanetAI for CargonautsPlanet {
                                         "{:?}",
                                         logging_wrapper::drop_planet_state_as_string(state)
                                     ),
-                                ),
+                                )
                             ],
                         );
+
+
+                        
+                        let rocket_created =  state.take_rocket();
+
                         // Give ownership to the orchestrator
                         logging_wrapper::log_for_channel_debug(
                             state.id(),
@@ -280,7 +389,7 @@ impl PlanetAI for CargonautsPlanet {
                             EventType::InternalPlanetAction,
                             vec!["Asteroid handled".to_string()],
                         );
-                        state.take_rocket()
+                        rocket_created
                     }
                     Err(string_error) => {
                         // Technically the rocket could be built but something went wrong; logging the error
@@ -314,18 +423,20 @@ impl PlanetAI for CargonautsPlanet {
                     ActorType::SelfActor,
                     0.to_string(),
                     EventType::InternalPlanetAction,
-                    vec!["planet received an Asteroid and cannot defend itself".to_string()],
+                    vec!["planet received an Asteroid and cannot defend itself and it is being destroyed".to_string()],
                 );
                 logging_wrapper::log_for_channel_with_key_trace(
                     state.id(),
                     ActorType::SelfActor,
                     0.to_string(),
                     EventType::InternalPlanetAction,
-                    vec![(
+                    vec![
+                        (
                         "State of planet before being destroyed".to_string(),
                         logging_wrapper::drop_planet_state_as_string(state),
                     )],
                 );
+
                 None
             }
         }
