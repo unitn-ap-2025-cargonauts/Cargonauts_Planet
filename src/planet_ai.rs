@@ -21,6 +21,7 @@ use common_game::components::energy_cell::EnergyCell;
 
 struct CargonautsPlanet;
 
+#[allow(rustdoc::private_intra_doc_links)]
 /// Creates a new [`Planet`] instance set for be a Cargonauts planet.
 ///
 /// # Parameters
