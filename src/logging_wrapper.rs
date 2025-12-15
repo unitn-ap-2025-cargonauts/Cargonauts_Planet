@@ -1,4 +1,4 @@
-/// Wrapper fot the loggin module defined in the common crate.
+//! Wrapper fot the loggin module defined in the common crate.
 
 use common_game::components::planet::PlanetState;
 use common_game::logging::{ActorType, Channel, EventType, LogEvent, Payload};
@@ -34,7 +34,7 @@ use common_game::logging::{ActorType, Channel, EventType, LogEvent, Payload};
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let payload = vec!["Connection failed".to_string(), "Timeout occurred".to_string()];
 ///
 /// log_message(
@@ -108,7 +108,7 @@ fn log_message(
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let payload = vec![
 ///     ("event_name".to_string(), "user_login".to_string()),
 ///     ("timestamp".to_string(), "2024-01-15".to_string()),
@@ -161,13 +161,14 @@ fn log_message_with_key(
 /// * `$Enum` - The enum variant of the `Channel` type (e.g., `Error`, `Info`, `Debug`, `Warning`, `Trace`)
 /// * `$name` - A string literal representing the channel name (used in the generated function name in lowercase)
 ///
-/// // This generates:
-/// // - log_for_channel_error(sender_id, receiver_type, receiver_id, event_type, payload)
-/// // - log_for_channel_with_key_error(sender_id, receiver_type, receiver_id, event_type, payload)
-/// // - log_for_channel_info(sender_id, receiver_type, receiver_id, event_type, payload)
-/// // - log_for_channel_with_key_info(sender_id, receiver_type, receiver_id, event_type, payload)
-/// // - log_for_channel_debug(sender_id, receiver_type, receiver_id, event_type, payload)
-/// // - log_for_channel_with_key_debug(sender_id, receiver_type, receiver_id, event_type, payload)
+/// This generates:
+/// ```text
+/// - log_for_channel_error(sender_id, receiver_type, receiver_id, event_type, payload)
+/// - log_for_channel_with_key_error(sender_id, receiver_type, receiver_id, event_type, payload)
+/// - log_for_channel_info(sender_id, receiver_type, receiver_id, event_type, payload)
+/// - log_for_channel_with_key_info(sender_id, receiver_type, receiver_id, event_type, payload)
+/// - log_for_channel_debug(sender_id, receiver_type, receiver_id, event_type, payload)
+/// - log_for_channel_with_key_debug(sender_id, receiver_type, receiver_id, event_type, payload)
 /// ```
 macro_rules! specialize_channel_func {
     ( $( $Enum:ident => $name:literal ),* ) => {
