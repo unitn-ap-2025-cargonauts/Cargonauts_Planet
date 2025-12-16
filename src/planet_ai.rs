@@ -311,7 +311,7 @@ impl PlanetAI for CargonautsPlanet {
                 }
                 None => {
                     // Strange behavior: the .has_rocket failed! Log the error
-                    logging_wrapper::log_for_channel_with_key_error(
+                    logging_wrapper::log_for_channel_with_key_warning(
                         state.id(),
                         ActorType::SelfActor,
                         0.to_string(),
@@ -394,7 +394,7 @@ impl PlanetAI for CargonautsPlanet {
                     }
                     Err(string_error) => {
                         // Technically the rocket could be built but something went wrong; logging the error
-                        logging_wrapper::log_for_channel_with_key_error(
+                        logging_wrapper::log_for_channel_with_key_warning(
                             state.id(),
                             ActorType::SelfActor,
                             0.to_string(),
