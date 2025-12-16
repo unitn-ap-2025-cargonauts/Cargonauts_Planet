@@ -265,7 +265,7 @@ impl PlanetAI for CargonautsPlanet {
 
             match rocket {
                 Some(taken_rocket) => {
-                    logging_wrapper::log_for_channel_info(
+                    logging_wrapper::log_for_channel_debug(
                         state.id(),
                         ActorType::SelfActor,
                         0.to_string(),
@@ -350,7 +350,7 @@ impl PlanetAI for CargonautsPlanet {
                     Ok(_) => {
                         // Successfully created the rocket
 
-                        logging_wrapper::log_for_channel_info(
+                        logging_wrapper::log_for_channel_debug(
                             state.id(),
                             ActorType::SelfActor,
                             0.to_string(),
@@ -419,7 +419,7 @@ impl PlanetAI for CargonautsPlanet {
                 }
             } else {
                 // Rocket can not be built
-                logging_wrapper::log_for_channel_info(
+                logging_wrapper::log_for_channel_debug(
                     state.id(),
                     ActorType::SelfActor,
                     0.to_string(),
@@ -464,7 +464,7 @@ impl PlanetAI for CargonautsPlanet {
     /// is received, but **only if** the planet is currently in a *running* state.
     ///
     fn stop(&mut self, state: &PlanetState) {
-        logging_wrapper::log_for_channel_with_key_info(
+        logging_wrapper::log_for_channel_with_key_debug(
             state.id(),
             ActorType::SelfActor,
             0.to_string(),
