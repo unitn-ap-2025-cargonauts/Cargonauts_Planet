@@ -233,7 +233,7 @@ impl PlanetAI for CargonautsPlanet {
                         EventType::InternalPlanetAction,
                         Channel::Warning,
                         Payload::from([
-                            ("Error descritpion".to_string(), "take_rocket() function failed: returned None".to_string()),
+                            ("Error description".to_string(), "take_rocket() function failed: returned None".to_string()),
                             ( "Planet state".to_string(), format!("{}", get_planet_state_as_string(state)) )
                         ])
                     ).emit();
@@ -483,14 +483,6 @@ impl PlanetAI for CargonautsPlanet {
             ])
         ).emit();
     }
-
-    fn handle_sunray(&mut self, state: &mut PlanetState, generator: &Generator, combinator: &Combinator, sunray: Sunray) {
-        todo!()
-    }
-
-    fn handle_internal_state_req(&mut self, state: &mut PlanetState, generator: &Generator, combinator: &Combinator) -> DummyPlanetState {
-        todo!()
-    }
 }
 
 macro_rules! generate_complex_resource {
@@ -534,7 +526,6 @@ impl CargonautsPlanet {
     /// The planet can craft basic resources, so the handler:
     /// - Get the set of available basic resource from the planet generator
     /// - Wrap the set in a [PlanetToExplorer::SupportedResourceResponse] message and return it
-    #[allow(dead_code)]
     fn handle_supported_resource_request(
         &self,
         explorer_id: u32,
@@ -604,7 +595,6 @@ impl CargonautsPlanet {
     /// The planet can craft complex resources, so the handler:
     /// - Get the set of available complex resource from the planet combinator
     /// - Wrap the set in a [PlanetToExplorer::SupportedCombinationResponse] message and return it
-    #[allow(dead_code)]
     fn handle_supported_combination_request(
         &self,
         explorer_id: u32,
@@ -688,7 +678,6 @@ impl CargonautsPlanet {
     ///     - Wrap the generated resource in a [PlanetToExplorer::GenerateResourceResponse] message and return it.
     /// - Else:
     ///     - Wrap a `None` in a [PlanetToExplorer::GenerateResourceResponse] message and return it.
-    #[allow(dead_code)]
     fn handle_generate_resource_request(
         &self,
         explorer_id: u32,
@@ -858,7 +847,6 @@ impl CargonautsPlanet {
     /// - Else:
     ///     - Attempt to combine the provided ingredients using the combinator.
     ///     - Wrap the produced resource in a [PlanetToExplorer::CombineResourceResponse] message and return it.
-    #[allow(dead_code)]
     fn handle_combine_resource_request(
         &self,
         explorer_id: u32,
@@ -1038,7 +1026,6 @@ impl CargonautsPlanet {
     /// - Initializes a counter to 0
     /// - Accesses the energy cell and increments the counter if it is charged
     /// - Wraps the counter inside an [PlanetToExplorer::AvailableEnergyCellResponse] message and returns it
-    #[allow(dead_code)]
     fn handle_energy_cell_request(
         &self,
         explorer_id: u32,
