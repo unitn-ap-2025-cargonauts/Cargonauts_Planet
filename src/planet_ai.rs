@@ -9,18 +9,60 @@
 use common_game::components::planet::*;
 use common_game::components::resource::*;
 use common_game::components::rocket::Rocket;
-use common_game::logging::{ActorType, EventType};
-use common_game::protocols::messages::*;
+use common_game::logging::{ActorType, Channel, EventType, LogEvent, Participant, Payload};
 use crossbeam_channel::{Receiver, Sender};
 use paste::paste;
-use crate::logging_wrapper as logging_wrapper;
 
 //For docs
 #[allow(unused_imports)]
 use common_game::components::energy_cell::EnergyCell;
 use common_game::components::sunray::Sunray;
+use common_game::protocols::orchestrator_planet::{OrchestratorToPlanet, PlanetToOrchestrator};
+use common_game::protocols::planet_explorer::{ExplorerToPlanet, PlanetToExplorer};
 
-struct CargonautsPlanet;
+struct CargonautsPlanet {
+    participant: Participant,
+}
+
+impl CargonautsPlanet {
+    fn log_internal(&self, channel: Channel, event_type: EventType, payload: Payload) {
+        LogEvent::self_directed(self.participant.clone(), event_type, channel, payload).emit();
+    }
+
+    fn log_to_actor(
+        &self,
+        receiver_type: ActorType,
+        receiver_id: impl Into<common_game::utils::ID>,
+        channel: Channel,
+        event_type: EventType,
+        payload: Payload,
+    ) {
+        let receiver = Participant::new(receiver_type, receiver_id);
+        LogEvent::new(
+            Some(self.participant.clone()),
+            Some(receiver),
+            event_type,
+            channel,
+            payload,
+        )
+        .emit();
+    }
+}
+
+fn get_planet_state_payload(state: &PlanetState) -> Vec<(String, String)> {
+    vec![
+        ("planet_id".to_string(), state.id().to_string()),
+        (
+            "energy_cell_charged".to_string(),
+            state.cell(0).is_charged().to_string(),
+        ),
+        ("has_rocket".to_string(), state.has_rocket().to_string()),
+    ]
+}
+
+fn create_payload(items: Vec<(String, String)>) -> Payload {
+    items.into_iter().collect()
+}
 
 #[allow(rustdoc::private_intra_doc_links)]
 /// Creates a new [`Planet`] instance set for be a Cargonauts planet.
@@ -54,10 +96,11 @@ pub fn create_planet(
     rx_explorer: Receiver<ExplorerToPlanet>,
     planet_id: u32,
 ) -> Planet {
+    let participant = Participant::new(ActorType::Planet, planet_id);
     let planet = Planet::new(
         planet_id,
         PlanetType::C,
-        Box::new(CargonautsPlanet),
+        Box::new(CargonautsPlanet { participant }),
         vec![BasicResourceType::Carbon],
         vec![
             ComplexResourceType::Diamond,
@@ -74,11 +117,6 @@ pub fn create_planet(
     planet.unwrap()
 }
 
-impl Default for CargonautsPlanet {
-    fn default() -> Self {
-        Self
-    }
-}
 
 impl PlanetAI for CargonautsPlanet {
 
@@ -1137,13 +1175,12 @@ mod tests {
         ComplexResourceType,
     };
     use common_game::components::sunray::Sunray;
-    use common_game::protocols::messages::{
-        ExplorerToPlanet, OrchestratorToPlanet, PlanetToExplorer, PlanetToOrchestrator,
-    };
     use crossbeam_channel::{Receiver, Sender, unbounded};
     use std::collections::HashSet;
     use std::sync::{Arc, Mutex, Once};
     use std::thread;
+    use common_game::protocols::orchestrator_planet::{OrchestratorToPlanet, PlanetToOrchestrator};
+    use common_game::protocols::planet_explorer::{ExplorerToPlanet, PlanetToExplorer};
 
     static INIT_LOGGER: Once = Once::new();
     pub fn init_logger() {
@@ -1255,7 +1292,7 @@ mod tests {
         fn incoming_explorer(&self, id: u32, tx: Sender<PlanetToExplorer>) {
             let msg = OrchestratorToPlanet::IncomingExplorerRequest {
                 explorer_id: id,
-                new_mpsc_sender: tx,
+                new_sender: tx,
             };
             let _ = self.from_orch_tx.send(msg);
             let _ = self.to_orch_rx.recv();
