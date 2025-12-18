@@ -464,24 +464,22 @@ impl PlanetAI for CargonautsPlanet {
         }
     }
 
-    fn on_explorer_arrival(
+    fn on_explorer_arrival( //TODO
         &mut self,
         _state: &mut PlanetState,
         _generator: &Generator,
         _combinator: &Combinator,
         _explorer_id: u32,
     ) {
-        todo!()
     }
 
-    fn on_explorer_departure(
+    fn on_explorer_departure( //TODO
         &mut self,
         _state: &mut PlanetState,
         _generator: &Generator,
         _combinator: &Combinator,
         _explorer_id: u32,
     ) {
-        todo!()
     }
 
     /// This method will be invoked when a [OrchestratorToPlanet::StartPlanetAI]
