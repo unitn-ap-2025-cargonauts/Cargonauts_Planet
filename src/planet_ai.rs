@@ -9,15 +9,17 @@
 use common_game::components::planet::*;
 use common_game::components::resource::*;
 use common_game::components::rocket::Rocket;
-use common_game::logging::{ActorType, EventType};
+use common_game::logging::{ActorType, Channel, EventType, Participant, Payload};
 use common_game::protocols::messages::*;
 use crossbeam_channel::{Receiver, Sender};
 use paste::paste;
-use crate::logging_wrapper as logging_wrapper;
+use common_game::logging::LogEvent;
+
 
 //For docs
 #[allow(unused_imports)]
 use common_game::components::energy_cell::EnergyCell;
+use common_game::components::sunray::Sunray;
 
 struct CargonautsPlanet;
 
@@ -259,77 +261,62 @@ impl PlanetAI for CargonautsPlanet {
         _: &Combinator,
     ) -> Option<Rocket> {
         if state.has_rocket() {
-            let before_take_rocket = logging_wrapper::drop_planet_state_as_string(state);
+            let before_take_rocket = get_planet_state_as_string(state);
 
             let rocket = state.take_rocket();
 
             match rocket {
                 Some(taken_rocket) => {
-                    logging_wrapper::log_for_channel_debug(
-                        state.id(),
-                        ActorType::SelfActor,
-                        0.to_string(),
-                        EventType::InternalPlanetAction,
-                        vec![
-                            "planet received an Asteroid and has the rocket to deflect it."
-                                .to_string(),
-                        ],
-                    );
 
-                    logging_wrapper::log_for_channel_with_key_trace(
-                        state.id(),
-                        ActorType::SelfActor,
-                        0.to_string(),
-                        EventType::InternalPlanetAction,
-                        vec![
-                            (
-                                "Traced message:".to_string(),
-                                "Rocket successfully deflected".to_string(),
-                            ),
-                            (
-                                "State before Rocket usage: ".to_string(),
-                                format!("{:?}", before_take_rocket),
-                            ),
-                            (
-                                "State after Rocket usage: ".to_string(),
-                                format!(
-                                    "{:?}",
-                                    logging_wrapper::drop_planet_state_as_string(state)
-                                ),
-                            ),
-                        ],
-                    );
 
-                    logging_wrapper::log_for_channel_debug(
-                        state.id(),
-                        ActorType::SelfActor,
-                        0.to_string(),
+                    LogEvent::self_directed(
+                        Participant::new(ActorType::SelfActor, state.id()),
                         EventType::InternalPlanetAction,
-                        vec!["Asteroid handled".to_string()],
-                    );
+                        Channel::Debug,
+                        Payload::from([
+                            ( "Debug message".to_string(), "Planet received an Asteroid and has the rocket to deflect it".to_string())
+                        ])
+                    ).emit();
+
+
+                    LogEvent::self_directed(
+                        Participant::new(ActorType::SelfActor, state.id()),
+                        EventType::InternalPlanetAction,
+                        Channel::Trace,
+                        Payload::from([
+                            ( "Traced message:".to_string(), "Rocket successfully deflected".to_string()),
+                            ( "State before Rocket usage: ".to_string(), format!("{:?}", before_take_rocket) ) ,
+                            ( "State after Rocket usage: ".to_string(), format!("{}", get_planet_state_as_string(state) ) )
+                        ])
+                    ).emit();
+
+
+
+                    LogEvent::self_directed(
+                        Participant::new(ActorType::SelfActor, state.id()),
+                        EventType::InternalPlanetAction,
+                        Channel::Debug,
+                        Payload::from(
+                            [("Debug info".to_string(), "Asteroid handled".to_string())]
+                        )
+                    ).emit();
+
+
+
                     Some(taken_rocket)
                 }
                 None => {
                     // Strange behavior: the .has_rocket failed! Log the error
-                    logging_wrapper::log_for_channel_with_key_warning(
-                        state.id(),
-                        ActorType::SelfActor,
-                        0.to_string(),
+
+                    LogEvent::self_directed(
+                        Participant::new(ActorType::SelfActor, state.id()),
                         EventType::InternalPlanetAction,
-                        vec![
-                            (
-                                "Error description".to_string(),
-                                "take_rocket() function failed: returned None".to_string(),
-                            ),
-                            (
-                                "planet state".to_string(),
-                                format!(
-                                    "{:?}",
-                                    logging_wrapper::drop_planet_state_as_string(state)
-                                ),
-                            ),
-                        ],
-                    );
+                        Channel::Warning,
+                        Payload::from([
+                            ("Error descritpion".to_string(), "take_rocket() function failed: returned None".to_string()),
+                            ( "Planet state".to_string(), format!("{}", get_planet_state_as_string(state)) )
+                        ])
+                    ).emit();
 
                     None
                 }
@@ -350,93 +337,78 @@ impl PlanetAI for CargonautsPlanet {
                     Ok(_) => {
                         // Successfully created the rocket
 
-                        logging_wrapper::log_for_channel_debug(
-                            state.id(),
-                            ActorType::SelfActor,
-                            0.to_string(),
+                        LogEvent::self_directed(
+                            Participant::new(ActorType::SelfActor, state.id()),
                             EventType::InternalPlanetAction,
-                            vec!["planet received an Asteroid and has just created a rocket to deflect it. Proceeding".to_string()]
-                        );
+                            Channel::Debug,
+                            Payload::from([
+                                ("Debug message".to_string(), "Planet received an Asteroid and has just created a rocket to deflect it. Proceeding".to_string())
+                            ])
+                        ).emit();
 
-                        logging_wrapper::log_for_channel_with_key_trace(
-                            state.id(),
-                            ActorType::SelfActor,
-                            0.to_string(),
+
+                        LogEvent::self_directed(
+                            Participant::new(ActorType::SelfActor, state.id()),
                             EventType::InternalPlanetAction,
-                            vec![
-                                (
-                                    "Traced message:".to_string(),
-                                    "Rocket successfully deflected".to_string(),
-                                ),
-                                (
-                                    "State after Rocket creation: ".to_string(),
-                                    format!(
-                                        "{:?}",
-                                        logging_wrapper::drop_planet_state_as_string(state)
-                                    ),
-                                )
-                            ],
-                        );
+                            Channel::Debug,
+                            Payload::from([
+                                ("Trace message".to_string(), "Asteroid successfully deflected".to_string()),
+                                ("State after Rocket creation".to_string(), format!("{}", get_planet_state_as_string(state)))
+                            ])
+                        ).emit();
 
 
                         
                         let rocket_created =  state.take_rocket();
 
-                        // Give ownership to the orchestrator
-                        logging_wrapper::log_for_channel_debug(
-                            state.id(),
-                            ActorType::SelfActor,
-                            0.to_string(),
+
+                        LogEvent::broadcast(
+                            Participant::new(ActorType::SelfActor, state.id()),
                             EventType::InternalPlanetAction,
-                            vec!["Asteroid handled".to_string()],
-                        );
+                            Channel::Debug,
+                            Payload::from([
+                                ("Trace message".to_string(), "Asteroid handled".to_string())
+                            ])
+                        ).emit();
+
+
                         rocket_created
                     }
                     Err(string_error) => {
                         // Technically the rocket could be built but something went wrong; logging the error
-                        logging_wrapper::log_for_channel_with_key_warning(
-                            state.id(),
-                            ActorType::SelfActor,
-                            0.to_string(),
+                        LogEvent::broadcast(
+                            Participant::new(ActorType::SelfActor, state.id()),
                             EventType::InternalPlanetAction,
-                            vec![
-                                (
-                                    "Error description".to_string(),
-                                    format!(
-                                        "build_rocket() function failed. Error reason: {}",
-                                        string_error
-                                    )
-                                    .to_string(),
-                                ),
-                                (
-                                    "planet state".to_string(),
-                                    logging_wrapper::drop_planet_state_as_string(state),
-                                ),
-                            ],
-                        );
+                            Channel::Warning,
+                            Payload::from([
+                                ("Warning Description".to_string(), format!("build_rocket() function failed. Error reason: {}", string_error)),
+                                ("Planet state".to_string(), format!("{}", get_planet_state_as_string(state)))
+                            ])
+                        ).emit();
                         None
                     }
                 }
             } else {
                 // Rocket can not be built
-                logging_wrapper::log_for_channel_debug(
-                    state.id(),
-                    ActorType::SelfActor,
-                    0.to_string(),
+                LogEvent::self_directed(
+                    Participant::new(ActorType::SelfActor, state.id()),
                     EventType::InternalPlanetAction,
-                    vec!["planet received an Asteroid and cannot defend itself and it is being destroyed".to_string()],
-                );
-                logging_wrapper::log_for_channel_with_key_trace(
-                    state.id(),
-                    ActorType::SelfActor,
-                    0.to_string(),
+                    Channel::Debug,
+                    Payload::from([
+                        ( "Debug message".to_string(), "Planet received an Asteroid and cannot defend itself thus it will be destroyed!".to_string() )
+                    ])
+                ).emit();
+
+
+                LogEvent::self_directed(
+                    Participant::new(ActorType::SelfActor, state.id()),
                     EventType::InternalPlanetAction,
-                    vec![
-                        (
-                        "State of planet before being destroyed".to_string(),
-                        logging_wrapper::drop_planet_state_as_string(state),
-                    )],
-                );
+                    Channel::Trace,
+                    Payload::from([
+                        ( "Planet state before being destroyed".to_string(), format!("{}", get_planet_state_as_string(state)) )
+                    ])
+                ).emit();
+
 
                 None
             }
@@ -447,33 +419,39 @@ impl PlanetAI for CargonautsPlanet {
     /// is received, but **only if** the planet is currently in a *stopped* state.
     ///
     /// Start messages received when planet is already running are **ignored**.
-    fn start(&mut self, state: &PlanetState) {
-        logging_wrapper::log_for_channel_with_key_debug(
-            state.id(),
-            ActorType::SelfActor,
-            0.to_string(),
+    fn on_start(&mut self, state: &PlanetState, generator: &Generator, combinator: &Combinator) {
+
+        LogEvent::self_directed(
+            Participant::new(ActorType::SelfActor, state.id()),
             EventType::InternalPlanetAction,
-            vec![(
-                "State of the planet upon receipt of the StartPlanetAI message".to_string(),
-                format!("{:?}", logging_wrapper::drop_planet_state_as_string(state)),
-            )],
-        );
+            Channel::Debug,
+            Payload::from([
+                ( "State of the planet upon receipt of the StartPlanetAI message".to_string(), format!("{}", get_planet_state_as_string(state)) )
+            ])
+        ).emit();
+
     }
 
     /// This method will be invoked when a [OrchestratorToPlanet::StopPlanetAI]
     /// is received, but **only if** the planet is currently in a *running* state.
     ///
-    fn stop(&mut self, state: &PlanetState) {
-        logging_wrapper::log_for_channel_with_key_debug(
-            state.id(),
-            ActorType::SelfActor,
-            0.to_string(),
+    fn on_stop(&mut self, state: &PlanetState, generator: &Generator, combinator: &Combinator) {
+        LogEvent::self_directed(
+            Participant::new(ActorType::SelfActor, state.id()),
             EventType::InternalPlanetAction,
-            vec![(
-                "State of the planet upon receipt of the StopPlanetAi message".to_string(),
-                format!("{:?}", logging_wrapper::drop_planet_state_as_string(state)),
-            )],
-        );
+            Channel::Debug,
+            Payload::from([
+                ( "State of the planet upon receipt of the StopPlanetAi message".to_string(), format!("{}", get_planet_state_as_string(state)) )
+            ])
+        ).emit();
+    }
+
+    fn handle_sunray(&mut self, state: &mut PlanetState, generator: &Generator, combinator: &Combinator, sunray: Sunray) {
+        todo!()
+    }
+
+    fn handle_internal_state_req(&mut self, state: &mut PlanetState, generator: &Generator, combinator: &Combinator) -> DummyPlanetState {
+        todo!()
     }
 }
 
@@ -1784,4 +1762,17 @@ mod tests {
 
         let _ = planet_thread.join();
     }
+}
+
+
+
+fn get_planet_state_as_string(state: &PlanetState) -> String {
+    let stringify_rocket = |option_rocket: bool| -> String {
+        match option_rocket {
+            true => "Some(rocket)".to_string(),
+            false => "None".to_string(),
+        }
+    };
+    format!("{:?} , Rocket: {}, EnergyCell: {:?}, Can Have Rocket: {}", state.id(), stringify_rocket(state.has_rocket()), state.cell(0), state.can_have_rocket() )
+
 }
