@@ -94,26 +94,16 @@ pub fn create_planet(
 }
 
 impl PlanetAI for CargonautsPlanet {
-    // === OrchestratorToPlanet Handler ====================================================================
-    /// TODO Handles messages sent by the Orchestrator to the Planet.
+    /// Handler for the [OrchestratorToPlanet::Sunray] message, responsible for managing Sunray absorption.
     ///
-    /// # Parameters
-    /// - `state`: Mutable reference to the current state of the planet.
-    /// - `_generator`: Reference to the generator (unused in this handler).
-    /// - `_combinator`: Reference to the combinator (unused in this handler).
-    /// - `msg`: The [`OrchestratorToPlanet`] message to handle.
+    /// This method attempts to charge the planet's [EnergyCell] using the provided [Sunray].
     ///
-    /// # Returns
-    /// `Option<PlanetToOrchestrator>`
+    /// More precisely:
+    /// - If the [EnergyCell] is not charged, it consumes the [Sunray] and sets the cell state to charged.
+    /// - If the [EnergyCell] is already charged, the [Sunray] is ignored (wasted) and the state remains unchanged.
     ///
-    /// Returns a response message to the Orchestrator if the processed message requires one,
-    /// or `None` otherwise.
-    ///
-    /// # Logic
-    /// The handler processes specific messages that modify the state or request information:
-    /// - **[`OrchestratorToPlanet::Sunray`]**: Charges the planet's energy cell and returns a [`PlanetToOrchestrator::SunrayAck`].
-    /// - **[`OrchestratorToPlanet::InternalStateRequest`]**: Serializes the current planet state and returns it via [`PlanetToOrchestrator::InternalStateResponse`].
-    /// - **Other messages**: Returns `None`. Messages such as `Start`, `Stop`, or `Asteroid` are handled by the main `run` loop or are ignored in this context.
+    /// This handler logs the reception of the sunray and the subsequent acknowledgment event,
+    /// modifying the [PlanetState] in place.
     fn handle_sunray(
         &mut self,
         state: &mut PlanetState,
@@ -121,46 +111,38 @@ impl PlanetAI for CargonautsPlanet {
         _combinator: &Combinator,
         sunray: Sunray,
     ) {
-        let planet_id = state.id();
-
-        logging_wrapper::log_for_channel_with_key_debug(
-            //TODO adapt log
-            planet_id,
-            ActorType::SelfActor,
-            "0",
+        // Log Debug: Called handle_sunray
+        LogEvent::self_directed(
+            Participant::new(ActorType::SelfActor, state.id()),
             EventType::InternalPlanetAction,
-            vec![
-                (
-                    "Debug detail".to_string(),
-                    "Called handle_orchestrator_msg".to_string(),
-                ),
-                // We cannot log 'msg' here easily if it is moved into the match,
-                // so we log the specific variant inside the match arms.
-            ],
-        );
-
-        //LOG trace: Processing Sunray
-        logging_wrapper::log_for_channel_trace(
-            planet_id,
-            ActorType::SelfActor,
-            0.to_string(),
-            EventType::InternalPlanetAction,
-            vec!["Received Sunray, attempting to charge cell".to_string()],
-        );
+            Channel::Debug,
+            Payload::from([
+                ("Debug message".to_string(), "Called handle_sunray".to_string())
+            ]),
+        ).emit();
 
         let _ = state.charge_cell(sunray);
 
-        //LOG info: SunrayAck
-        logging_wrapper::log_for_channel_with_key_info(
-            planet_id,
-            ActorType::Orchestrator,
-            0.to_string(),
+        // Log Trace: Processing Sunray
+        LogEvent::self_directed(
+            Participant::new(ActorType::SelfActor, state.id()),
+            EventType::InternalPlanetAction,
+            Channel::Trace,
+            Payload::from([
+                ("Trace message".to_string(), "Received Sunray, attempting to charge cell".to_string())
+            ]),
+        ).emit();
+
+        // Log Info: SunrayAck
+        LogEvent::self_directed(
+            Participant::new(ActorType::SelfActor, state.id()),
             EventType::MessagePlanetToOrchestrator,
-            vec![
+            Channel::Info,
+            Payload::from([
                 ("msg_enum".to_string(), "SunrayAck".to_string()),
                 ("action".to_string(), "Cell charged".to_string()),
-            ],
-        );
+            ]),
+        ).emit();
     }
 
     /// Handler for the [OrchestratorToPlanet::Asteroid] message, it returns `None` or `Some([Rocket])` based on the rules of the
@@ -333,71 +315,54 @@ impl PlanetAI for CargonautsPlanet {
         }
     }
 
-    /// TODO Handles messages sent by the Orchestrator to the Planet.
+    /// Handler for the [OrchestratorToPlanet::InternalStateRequest] message, responsible for exposing the internal state.
     ///
-    /// # Parameters
-    /// - `state`: Mutable reference to the current state of the planet.
-    /// - `_generator`: Reference to the generator (unused in this handler).
-    /// - `_combinator`: Reference to the combinator (unused in this handler).
-    /// - `msg`: The [`OrchestratorToPlanet`] message to handle.
+    /// This method captures a snapshot of the current [PlanetState] and converts it into a
+    /// [DummyPlanetState] (a serializable representation used for visualization or debugging).
     ///
-    /// # Returns
-    /// `Option<PlanetToOrchestrator>`
-    ///
-    /// Returns a response message to the Orchestrator if the processed message requires one,
-    /// or `None` otherwise.
-    ///
-    /// # Logic
-    /// The handler processes specific messages that modify the state or request information:
-    /// - **[`OrchestratorToPlanet::Sunray`]**: Charges the planet's energy cell and returns a [`PlanetToOrchestrator::SunrayAck`].
-    /// - **[`OrchestratorToPlanet::InternalStateRequest`]**: Serializes the current planet state and returns it via [`PlanetToOrchestrator::InternalStateResponse`].
-    /// - **Other messages**: Returns `None`. Messages such as `Start`, `Stop`, or `Asteroid` are handled by the main `run` loop or are ignored in this context.
+    /// More precisely, it:
+    /// - Logs the receipt of the request.
+    /// - Serializes the critical components of the planet (id, energy cells, rocket status, etc.).
+    /// - Returns the [DummyPlanetState] to be sent back to the Orchestrator.
     fn handle_internal_state_req(
         &mut self,
         state: &mut PlanetState,
         _generator: &Generator,
         _combinator: &Combinator,
     ) -> DummyPlanetState {
-        let planet_id = state.id();
-
-        logging_wrapper::log_for_channel_with_key_debug(
-            //TODO adapt log
-            planet_id,
-            ActorType::SelfActor,
-            "0",
+        // Log Debug: Called handle_internal_state_req
+        LogEvent::self_directed(
+            Participant::new(ActorType::SelfActor, state.id()),
             EventType::InternalPlanetAction,
-            vec![
-                (
-                    "Debug detail".to_string(),
-                    "Called handle_orchestrator_msg".to_string(),
-                ),
-                // We cannot log 'msg' here easily if it is moved into the match,
-                // so we log the specific variant inside the match arms.
-            ],
-        );
+            Channel::Debug,
+            Payload::from([
+                ("Debug message".to_string(), "Called handle_internal_state_req".to_string())
+            ]),
+        ).emit();
 
-        //LOG trace: Processing InternalStateRequest
-        logging_wrapper::log_for_channel_trace(
-            planet_id,
-            ActorType::SelfActor,
-            0.to_string(),
+        // Log Trace: Processing Request
+        LogEvent::self_directed(
+            Participant::new(ActorType::SelfActor, state.id()),
             EventType::InternalPlanetAction,
-            vec!["Received InternalStateRequest, gathering state".to_string()],
-        );
+            Channel::Trace,
+            Payload::from([
+                ("Trace message".to_string(), "Received InternalStateRequest, gathering state".to_string())
+            ]),
+        ).emit();
 
+        // Logic: Create the dummy state
         let dummy_state = state.to_dummy();
 
-        //LOG info: InternalStateResponse
-        logging_wrapper::log_for_channel_with_key_info(
-            planet_id,
-            ActorType::Orchestrator,
-            0.to_string(),
+        // Log Info: InternalStateResponse
+        LogEvent::self_directed(
+            Participant::new(ActorType::SelfActor, state.id()),
             EventType::MessagePlanetToOrchestrator,
-            vec![
+            Channel::Info,
+            Payload::from([
                 ("msg_enum".to_string(), "InternalStateResponse".to_string()),
                 ("state_dump".to_string(), format!("{:?}", &dummy_state)),
-            ],
-        );
+            ]),
+        ).emit();
 
         dummy_state
     }
