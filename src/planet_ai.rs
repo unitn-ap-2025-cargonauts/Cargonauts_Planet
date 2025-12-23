@@ -116,10 +116,12 @@ impl PlanetAI for CargonautsPlanet {
             Participant::new(ActorType::SelfActor, state.id()),
             EventType::InternalPlanetAction,
             Channel::Debug,
-            Payload::from([
-                ("Debug message".to_string(), "Called handle_sunray".to_string())
-            ]),
-        ).emit();
+            Payload::from([(
+                "Debug message".to_string(),
+                "Called handle_sunray".to_string(),
+            )]),
+        )
+        .emit();
 
         let _ = state.charge_cell(sunray);
 
@@ -128,10 +130,12 @@ impl PlanetAI for CargonautsPlanet {
             Participant::new(ActorType::SelfActor, state.id()),
             EventType::InternalPlanetAction,
             Channel::Trace,
-            Payload::from([
-                ("Trace message".to_string(), "Received Sunray, attempting to charge cell".to_string())
-            ]),
-        ).emit();
+            Payload::from([(
+                "Trace message".to_string(),
+                "Received Sunray, attempting to charge cell".to_string(),
+            )]),
+        )
+        .emit();
 
         // Log Info: SunrayAck
         LogEvent::self_directed(
@@ -142,7 +146,8 @@ impl PlanetAI for CargonautsPlanet {
                 ("msg_enum".to_string(), "SunrayAck".to_string()),
                 ("action".to_string(), "Cell charged".to_string()),
             ]),
-        ).emit();
+        )
+        .emit();
     }
 
     /// Handler for the [OrchestratorToPlanet::Asteroid] message, it returns `None` or `Some([Rocket])` based on the rules of the
@@ -169,41 +174,46 @@ impl PlanetAI for CargonautsPlanet {
 
             match rocket {
                 Some(taken_rocket) => {
-
-
                     LogEvent::self_directed(
                         Participant::new(ActorType::SelfActor, state.id()),
                         EventType::InternalPlanetAction,
                         Channel::Debug,
-                        Payload::from([
-                            ( "Debug message".to_string(), "Planet received an Asteroid and has the rocket to deflect it".to_string())
-                        ])
-                    ).emit();
-
+                        Payload::from([(
+                            "Debug message".to_string(),
+                            "Planet received an Asteroid and has the rocket to deflect it"
+                                .to_string(),
+                        )]),
+                    )
+                    .emit();
 
                     LogEvent::self_directed(
                         Participant::new(ActorType::SelfActor, state.id()),
                         EventType::InternalPlanetAction,
                         Channel::Trace,
                         Payload::from([
-                            ( "Traced message:".to_string(), "Rocket successfully deflected".to_string()),
-                            ( "State before Rocket usage: ".to_string(), format!("{:?}", before_take_rocket) ) ,
-                            ( "State after Rocket usage: ".to_string(), format!("{}", get_planet_state_as_string(state) ) )
-                        ])
-                    ).emit();
-
-
+                            (
+                                "Traced message:".to_string(),
+                                "Rocket successfully deflected".to_string(),
+                            ),
+                            (
+                                "State before Rocket usage: ".to_string(),
+                                format!("{:?}", before_take_rocket),
+                            ),
+                            (
+                                "State after Rocket usage: ".to_string(),
+                                get_planet_state_as_string(state).to_string(),
+                            ),
+                        ]),
+                    )
+                    .emit();
 
                     LogEvent::self_directed(
                         Participant::new(ActorType::SelfActor, state.id()),
                         EventType::InternalPlanetAction,
                         Channel::Debug,
-                        Payload::from(
-                            [("Debug info".to_string(), "Asteroid handled".to_string())]
-                        )
-                    ).emit();
-
-
+                        Payload::from([("Debug info".to_string(), "Asteroid handled".to_string())]),
+                    )
+                    .emit();
 
                     Some(taken_rocket)
                 }
@@ -215,10 +225,17 @@ impl PlanetAI for CargonautsPlanet {
                         EventType::InternalPlanetAction,
                         Channel::Warning,
                         Payload::from([
-                            ("Error description".to_string(), "take_rocket() function failed: returned None".to_string()),
-                            ( "Planet state".to_string(), format!("{}", get_planet_state_as_string(state)) )
-                        ])
-                    ).emit();
+                            (
+                                "Error description".to_string(),
+                                "take_rocket() function failed: returned None".to_string(),
+                            ),
+                            (
+                                "Planet state".to_string(),
+                                get_planet_state_as_string(state).to_string(),
+                            ),
+                        ]),
+                    )
+                    .emit();
 
                     None
                 }
@@ -248,29 +265,35 @@ impl PlanetAI for CargonautsPlanet {
                             ])
                         ).emit();
 
-
                         LogEvent::self_directed(
                             Participant::new(ActorType::SelfActor, state.id()),
                             EventType::InternalPlanetAction,
                             Channel::Debug,
                             Payload::from([
-                                ("Trace message".to_string(), "Asteroid successfully deflected".to_string()),
-                                ("State after Rocket creation".to_string(), format!("{}", get_planet_state_as_string(state)))
-                            ])
-                        ).emit();
+                                (
+                                    "Trace message".to_string(),
+                                    "Asteroid successfully deflected".to_string(),
+                                ),
+                                (
+                                    "State after Rocket creation".to_string(),
+                                    get_planet_state_as_string(state).to_string(),
+                                ),
+                            ]),
+                        )
+                        .emit();
 
                         let rocket_created = state.take_rocket();
-
 
                         LogEvent::broadcast(
                             Participant::new(ActorType::SelfActor, state.id()),
                             EventType::InternalPlanetAction,
                             Channel::Debug,
-                            Payload::from([
-                                ("Trace message".to_string(), "Asteroid handled".to_string())
-                            ])
-                        ).emit();
-
+                            Payload::from([(
+                                "Trace message".to_string(),
+                                "Asteroid handled".to_string(),
+                            )]),
+                        )
+                        .emit();
 
                         rocket_created
                     }
@@ -281,10 +304,20 @@ impl PlanetAI for CargonautsPlanet {
                             EventType::InternalPlanetAction,
                             Channel::Warning,
                             Payload::from([
-                                ("Warning Description".to_string(), format!("build_rocket() function failed. Error reason: {}", string_error)),
-                                ("Planet state".to_string(), format!("{}", get_planet_state_as_string(state)))
-                            ])
-                        ).emit();
+                                (
+                                    "Warning Description".to_string(),
+                                    format!(
+                                        "build_rocket() function failed. Error reason: {}",
+                                        string_error
+                                    ),
+                                ),
+                                (
+                                    "Planet state".to_string(),
+                                    get_planet_state_as_string(state).to_string(),
+                                ),
+                            ]),
+                        )
+                        .emit();
                         None
                     }
                 }
@@ -299,16 +332,16 @@ impl PlanetAI for CargonautsPlanet {
                     ])
                 ).emit();
 
-
                 LogEvent::self_directed(
                     Participant::new(ActorType::SelfActor, state.id()),
                     EventType::InternalPlanetAction,
                     Channel::Trace,
-                    Payload::from([
-                        ( "Planet state before being destroyed".to_string(), format!("{}", get_planet_state_as_string(state)) )
-                    ])
-                ).emit();
-
+                    Payload::from([(
+                        "Planet state before being destroyed".to_string(),
+                        get_planet_state_as_string(state).to_string(),
+                    )]),
+                )
+                .emit();
 
                 None
             }
@@ -335,20 +368,24 @@ impl PlanetAI for CargonautsPlanet {
             Participant::new(ActorType::SelfActor, state.id()),
             EventType::InternalPlanetAction,
             Channel::Debug,
-            Payload::from([
-                ("Debug message".to_string(), "Called handle_internal_state_req".to_string())
-            ]),
-        ).emit();
+            Payload::from([(
+                "Debug message".to_string(),
+                "Called handle_internal_state_req".to_string(),
+            )]),
+        )
+        .emit();
 
         // Log Trace: Processing Request
         LogEvent::self_directed(
             Participant::new(ActorType::SelfActor, state.id()),
             EventType::InternalPlanetAction,
             Channel::Trace,
-            Payload::from([
-                ("Trace message".to_string(), "Received InternalStateRequest, gathering state".to_string())
-            ]),
-        ).emit();
+            Payload::from([(
+                "Trace message".to_string(),
+                "Received InternalStateRequest, gathering state".to_string(),
+            )]),
+        )
+        .emit();
 
         // Logic: Create the dummy state
         let dummy_state = state.to_dummy();
@@ -362,7 +399,8 @@ impl PlanetAI for CargonautsPlanet {
                 ("msg_enum".to_string(), "InternalStateResponse".to_string()),
                 ("state_dump".to_string(), format!("{:?}", &dummy_state)),
             ]),
-        ).emit();
+        )
+        .emit();
 
         dummy_state
     }
@@ -375,32 +413,33 @@ impl PlanetAI for CargonautsPlanet {
         msg: ExplorerToPlanet,
     ) -> Option<PlanetToExplorer> {
         match msg {
-            ExplorerToPlanet::SupportedResourceRequest { explorer_id } => {
-                Self::handle_supported_resource_request(&self, state.id(), generator)
+            ExplorerToPlanet::SupportedResourceRequest { explorer_id: _ } => {
+                Self::handle_supported_resource_request(self, state.id(), generator)
             }
-            ExplorerToPlanet::SupportedCombinationRequest { explorer_id } => {
-                Self::handle_supported_combination_request(&self, state.id(), combinator)
+            ExplorerToPlanet::SupportedCombinationRequest { explorer_id: _ } => {
+                Self::handle_supported_combination_request(self, state.id(), combinator)
             }
             ExplorerToPlanet::GenerateResourceRequest {
                 explorer_id,
                 resource,
             } => Self::handle_generate_resource_request(
-                &self,
+                self,
                 explorer_id,
                 state,
                 generator,
                 resource,
             ),
             ExplorerToPlanet::CombineResourceRequest { explorer_id, msg } => {
-                Self::handle_combine_resource_request(&self, explorer_id, state, combinator, msg)
+                Self::handle_combine_resource_request(self, explorer_id, state, combinator, msg)
             }
             ExplorerToPlanet::AvailableEnergyCellRequest { explorer_id } => {
-                Self::handle_energy_cell_request(&self, explorer_id, state)
+                Self::handle_energy_cell_request(self, explorer_id, state)
             }
         }
     }
 
-    fn on_explorer_arrival( //TODO
+    fn on_explorer_arrival(
+        //TODO
         &mut self,
         _state: &mut PlanetState,
         _generator: &Generator,
@@ -409,7 +448,8 @@ impl PlanetAI for CargonautsPlanet {
     ) {
     }
 
-    fn on_explorer_departure( //TODO
+    fn on_explorer_departure(
+        //TODO
         &mut self,
         _state: &mut PlanetState,
         _generator: &Generator,
@@ -422,31 +462,33 @@ impl PlanetAI for CargonautsPlanet {
     /// is received, but **only if** the planet is currently in a *stopped* state.
     ///
     /// Start messages received when planet is already running are **ignored**.
-    fn on_start(&mut self, state: &PlanetState, generator: &Generator, combinator: &Combinator) {
-
+    fn on_start(&mut self, state: &PlanetState, _generator: &Generator, _combinator: &Combinator) {
         LogEvent::self_directed(
             Participant::new(ActorType::SelfActor, state.id()),
             EventType::InternalPlanetAction,
             Channel::Debug,
-            Payload::from([
-                ( "State of the planet upon receipt of the StartPlanetAI message".to_string(), format!("{}", get_planet_state_as_string(state)) )
-            ])
-        ).emit();
-
+            Payload::from([(
+                "State of the planet upon receipt of the StartPlanetAI message".to_string(),
+                get_planet_state_as_string(state).to_string(),
+            )]),
+        )
+        .emit();
     }
 
     /// This method will be invoked when a [OrchestratorToPlanet::StopPlanetAI]
     /// is received, but **only if** the planet is currently in a *running* state.
     ///
-    fn on_stop(&mut self, state: &PlanetState, generator: &Generator, combinator: &Combinator) {
+    fn on_stop(&mut self, state: &PlanetState, _generator: &Generator, _combinator: &Combinator) {
         LogEvent::self_directed(
             Participant::new(ActorType::SelfActor, state.id()),
             EventType::InternalPlanetAction,
             Channel::Debug,
-            Payload::from([
-                ( "State of the planet upon receipt of the StopPlanetAi message".to_string(), format!("{}", get_planet_state_as_string(state)) )
-            ])
-        ).emit();
+            Payload::from([(
+                "State of the planet upon receipt of the StopPlanetAi message".to_string(),
+                get_planet_state_as_string(state).to_string(),
+            )]),
+        )
+        .emit();
     }
 }
 
@@ -498,7 +540,7 @@ impl CargonautsPlanet {
     ) -> Option<PlanetToExplorer> {
         //LOG debug: "Called handle_supported_resource_request" + parameters
         Self::log_internal(
-            &self,
+            self,
             Channel::Debug,
             create_payload(vec![
                 (
@@ -526,7 +568,7 @@ impl CargonautsPlanet {
         .emit();
         //LOG debug: "Exit handle_supported_resource_request" + value return
         Self::log_internal(
-            &self,
+            self,
             Channel::Debug,
             create_payload(vec![
                 (
@@ -567,7 +609,7 @@ impl CargonautsPlanet {
     ) -> Option<PlanetToExplorer> {
         //LOG debug: "Called handle_supported_combination_request" + parameters
         Self::log_internal(
-            &self,
+            self,
             Channel::Debug,
             create_payload(vec![
                 (
@@ -598,7 +640,7 @@ impl CargonautsPlanet {
         .emit();
         //LOG debug: "Exit handle_supported_combination_request" + value return
         Self::log_internal(
-            &self,
+            self,
             Channel::Debug,
             create_payload(vec![
                 (
@@ -652,7 +694,7 @@ impl CargonautsPlanet {
     ) -> Option<PlanetToExplorer> {
         //LOG debug: "Called handle_generate_resource_request" + parameters
         Self::log_internal(
-            &self,
+            self,
             Channel::Debug,
             create_payload(vec![
                 (
@@ -669,7 +711,7 @@ impl CargonautsPlanet {
         let is_charged = energy_cell.is_charged();
         //LOG debug: "Checking energy cell charge state: {is_charged:?}"
         Self::log_internal(
-            &self,
+            self,
             Channel::Debug,
             create_payload(vec![(
                 "Debug detail".to_string(),
@@ -684,7 +726,7 @@ impl CargonautsPlanet {
                 BasicResourceType::Carbon => {
                     //LOG debug: "Attempting to generate Carbon resource"
                     Self::log_internal(
-                        &self,
+                        self,
                         Channel::Debug,
                         create_payload(vec![(
                             "Debug detail".to_string(),
@@ -695,7 +737,7 @@ impl CargonautsPlanet {
                         Ok(r) => {
                             //LOG info: "Successfully generated Carbon resource"
                             Self::log_internal(
-                                &self,
+                                self,
                                 Channel::Info,
                                 create_payload(vec![(
                                     "Info detail".to_string(),
@@ -707,7 +749,7 @@ impl CargonautsPlanet {
                         Err(e) => {
                             //LOG warning: "Failed to generate Carbon: {e:?}" + state
                             Self::log_internal(
-                                &self,
+                                self,
                                 Channel::Warning,
                                 create_payload(vec![
                                     (
@@ -724,7 +766,7 @@ impl CargonautsPlanet {
                 _ => {
                     //LOG warning: "Unexpected resource type requested"
                     Self::log_internal(
-                        &self,
+                        self,
                         Channel::Warning,
                         create_payload(vec![
                             (
@@ -740,7 +782,7 @@ impl CargonautsPlanet {
         } else {
             //LOG info: "Uncharged energy cell. Cannot generate resource Carbon"
             Self::log_internal(
-                &self,
+                self,
                 Channel::Info,
                 create_payload(vec![(
                     "Info detail".to_string(),
@@ -765,7 +807,7 @@ impl CargonautsPlanet {
         .emit();
         //LOG debug: "Exit handle_generate_resource_request" + return
         Self::log_internal(
-            &self,
+            self,
             Channel::Debug,
             create_payload(vec![
                 (
@@ -821,7 +863,7 @@ impl CargonautsPlanet {
     ) -> Option<PlanetToExplorer> {
         //LOG debug: "Called handle_combine_resource_request" + parameters
         Self::log_internal(
-            &self,
+            self,
             Channel::Debug,
             create_payload(vec![
                 (
@@ -837,7 +879,7 @@ impl CargonautsPlanet {
         let is_charged = energy_cell.is_charged();
         //LOG trace: "Checking energy cell charge state: {is_charged:?}"
         Self::log_internal(
-            &self,
+            self,
             Channel::Debug,
             create_payload(vec![(
                 "Debug detail".to_string(),
@@ -850,7 +892,7 @@ impl CargonautsPlanet {
         if !is_charged {
             //LOG info: "Uncharged energy cell. Cannot combine resources"
             Self::log_internal(
-                &self,
+                self,
                 Channel::Debug,
                 create_payload(vec![(
                     "Debug detail".to_string(),
@@ -894,7 +936,7 @@ impl CargonautsPlanet {
             .emit();
             //LOG debug: "Exit handle_combine_resource_request" + return
             Self::log_internal(
-                &self,
+                self,
                 Channel::Debug,
                 create_payload(vec![
                     (
@@ -925,7 +967,7 @@ impl CargonautsPlanet {
         if complex_response.is_ok() {
             //LOG info: "Successfully combined resources"
             Self::log_internal(
-                &self,
+                self,
                 Channel::Info,
                 create_payload(vec![(
                     "Info detail".to_string(),
@@ -953,7 +995,7 @@ impl CargonautsPlanet {
         .emit();
         //LOG debug: "Exit handle_combine_resource_request" + return
         Self::log_internal(
-            &self,
+            self,
             Channel::Debug,
             create_payload(vec![
                 (
@@ -998,7 +1040,7 @@ impl CargonautsPlanet {
     ) -> Option<PlanetToExplorer> {
         //LOG debug: "Called handle_energy_cell_request" + parameter
         Self::log_internal(
-            &self,
+            self,
             Channel::Debug,
             create_payload(vec![
                 (
@@ -1012,7 +1054,7 @@ impl CargonautsPlanet {
         let is_charged = state.cell(0).is_charged();
         //LOG trace: "Checking energy cell charge state: {is_charged:?}"
         Self::log_internal(
-            &self,
+            self,
             Channel::Debug,
             create_payload(vec![(
                 "Debug detail".to_string(),
@@ -1045,7 +1087,7 @@ impl CargonautsPlanet {
         .emit();
         //LOG debug: "Exit handle_energy_cell_request" + return
         Self::log_internal(
-            &self,
+            self,
             Channel::Debug,
             create_payload(vec![
                 (
@@ -1744,8 +1786,6 @@ mod tests {
     }
 }
 
-
-
 fn get_planet_state_as_string(state: &PlanetState) -> String {
     let stringify_rocket = |option_rocket: bool| -> String {
         match option_rocket {
@@ -1753,6 +1793,11 @@ fn get_planet_state_as_string(state: &PlanetState) -> String {
             false => "None".to_string(),
         }
     };
-    format!("{:?} , Rocket: {}, EnergyCell: {:?}, Can Have Rocket: {}", state.id(), stringify_rocket(state.has_rocket()), state.cell(0), state.can_have_rocket() )
-
+    format!(
+        "{:?} , Rocket: {}, EnergyCell: {:?}, Can Have Rocket: {}",
+        state.id(),
+        stringify_rocket(state.has_rocket()),
+        state.cell(0),
+        state.can_have_rocket()
+    )
 }
